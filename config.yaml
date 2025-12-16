@@ -1,0 +1,37 @@
+# 模型/接口配置（DashScope OpenAI compatible）
+llm:
+  base_url: "https://deepseek.fosu.edu.cn/v1"
+  api_key_env: "QWEN_API_KEY"
+  model: "qwen-32b"
+  temperature: 0.2
+  top_p: 0.8
+  max_tokens: 800
+  timeout_sec: 120
+
+# 数据路径
+paths:
+  personas_json: "data/personas.json"
+  books_root: "data/books"
+  output_root: "runs"
+
+# 实验开关
+experiment:
+  # 三种评测方式：aggregation / incremental / summary_based
+  method: "aggregation"
+
+  use_persona: true
+  use_discussion: true
+  use_interest_filter: true
+
+  # 讨论设置
+  discussion_rounds: 2
+  discussion_window: 10
+
+  # 代理数量（从 personas.json 里取前 N 个；也可改为随机采样）
+  n_agents: 8
+
+  # 评分保留几位小数（建议 1 位）
+  score_decimals: 1
+
+  # 是否将讨论后的 final_score 作为最终分（否则用 pre_discussion_score）
+  discussion_affects_score: true
