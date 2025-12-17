@@ -676,7 +676,14 @@ def run_incremental_agent(
     agent_uuid: str,
     persona_text: Optional[str],
     score_decimals: int,
-) -> Tuple[List[Dict[str, Any]], float, str]:
+) -> Tuple[List[Dict[str, Any]], float, str, Dict[str, Any]]:
+    """
+    Incremental-updated：
+    - 每章更新 summary/review/score
+    - pre_score：所有 step score 的平均（全文平均分）
+    - last_state：最后一章后的 summary/review/score（用于无讨论时 final_review）
+    """
+
     prev_summary = ""
     prev_review = ""
     prev_score = 3.0
@@ -688,33 +695,60 @@ def run_incremental_agent(
         chapter_idx = int(ch["Number"])
         chapter_text = str(ch["text"])
 
-        system, user = prompt_incremental_update(meta, chapter_text, prev_summary, prev_review, float(prev_score), persona_text)
+        system, user = prompt_incremental_update(
+            meta, chapter_text, prev_summary, prev_review, float(prev_score), persona_text
+        )
         _, parsed = llm.chat_json(
             system=system,
             user=user,
             temperature=float(cfg.llm.temperature),
             top_p=float(cfg.llm.top_p),
             max_tokens=int(cfg.llm.max_tokens),
-            trace={"book": meta["book_name"], "agent": agent_uuid, "method": "incremental", "stage": "incremental_update", "chapter": chapter_idx},
+            trace={
+                "book": meta["book_name"],
+                "agent": agent_uuid,
+                "method": "incremental",
+                "stage": "incremental_update",
+                "chapter": chapter_idx,
+            },
         )
         obj = parsed or {}
 
-        prev_summary = str(obj.get("summary", "")).strip()
-        prev_review = str(obj.get("review", "")).strip()
+        # ✅ 关键：字段缺失/空字符串时，保留旧状态，不要把 prev_* 清空
+        new_summary = obj.get("summary", None)
+        if new_summary is not None and str(new_summary).strip():
+            prev_summary = str(new_summary).strip()
+
+        new_review = obj.get("review", None)
+        if new_review is not None and str(new_review).strip():
+            prev_review = str(new_review).strip()
+
         try:
             score = float(obj.get("score", prev_score))
         except Exception:
             score = prev_score
-        score = clamp_score(score)
-        score = round(score, score_decimals)
+        score = round(clamp_score(score), score_decimals)
         prev_score = score
 
         scores.append(score)
-        steps.append({"chapter_index": chapter_idx, "score": score, "summary": prev_summary, "review": prev_review})
+        steps.append(
+            {
+                "chapter_index": chapter_idx,
+                "score": score,
+                "summary": prev_summary,
+                "review": prev_review,
+            }
+        )
 
     pre_score = round(sum(scores) / max(1, len(scores)), score_decimals)
-    stance = f"My current impression is around {pre_score:.1f}. Latest review: {prev_review}" if prev_review else f"My current impression is around {pre_score:.1f}."
-    return steps, pre_score, stance
+    stance = (
+        f"My current impression is around {pre_score:.1f}. Latest review: {prev_review}"
+        if prev_review else f"My current impression is around {pre_score:.1f}."
+    )
+
+    last_state = {"summary": prev_summary, "review": prev_review, "last_score": prev_score}
+    return steps, pre_score, stance, last_state
+
 
 
 def build_summary_agent(
@@ -979,11 +1013,12 @@ def run_one_book(
                 return uid, "aggregation", evals, float(pre_score), stance
 
             if method == "incremental":
-                steps, pre_score, stance = run_incremental_agent(
+                steps, pre_score, stance, last_state = run_incremental_agent(
                     llm=llm, cfg=cfg, meta=meta, chapters=chapters,
-                    agent_uuid=uid, persona_text=persona_text, score_decimals=score_decimals
+                    agent_uuid=uid, persona_text=persona_text,
+                    score_decimals=score_decimals
                 )
-                return uid, "incremental", steps, float(pre_score), stance
+                return uid, "incremental", {"steps": steps, "last_state": last_state}, float(pre_score), stance
 
             if method == "summary_based":
                 gs = build_summary_agent(
@@ -1167,7 +1202,9 @@ def run_one_book(
         if kind == "aggregation":
             agent_obj["chapter_evals"] = payload
         elif kind == "incremental":
-            agent_obj["incremental_steps"] = payload
+            agent_obj["incremental_steps"] = payload["steps"]
+            if (not use_discussion) and (method == "incremental"):
+                agent_obj["final_review"] = str(payload["last_state"].get("review", "")).strip()
         elif kind == "summary_based":
             agent_obj["global_summary"] = payload
 
