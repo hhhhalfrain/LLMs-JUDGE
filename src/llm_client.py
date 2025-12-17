@@ -1,21 +1,43 @@
 from __future__ import annotations
 from openai import OpenAI
 from typing import Dict, Any, Optional
-import os
 import time
+import httpx
+import logging
+
+from .json_utils import extract_json_object
+from .trace_logger import log_llm_call
 
 
 class LLMClient:
     """
-    对 OpenAI 兼容接口的轻封装：
-    - 统一传入 system + user
-    - 统一超时、重试
-    - 返回 message.content (字符串)
+    OpenAI 兼容接口封装：
+    - 每次请求可输出完整 trace 日志
+    - 支持多线程：建议每个线程单独实例化一个 LLMClient（见下文 LLMClientPool）
     """
-    def __init__(self, base_url: str, api_key: str, model: str, timeout_sec: int = 120):
-        self.client = OpenAI(base_url=base_url, api_key=api_key)
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout_sec: int = 120,
+        logger: Optional[logging.Logger] = None,
+        verbose_llm_io: bool = True,
+        print_parsed_json: bool = True,
+    ):
+        self._http = httpx.Client(timeout=httpx.Timeout(timeout_sec), trust_env=True)
+        self.client = OpenAI(base_url=base_url, api_key=api_key, http_client=self._http)
         self.model = model
-        self.timeout_sec = timeout_sec
+
+        self.logger = logger
+        self.verbose_llm_io = verbose_llm_io
+        self.print_parsed_json = print_parsed_json
+
+    def close(self) -> None:
+        try:
+            self._http.close()
+        except Exception:
+            pass
 
     def chat_json(
         self,
@@ -26,14 +48,13 @@ class LLMClient:
         max_tokens: int = 800,
         retries: int = 2,
         response_format: Optional[Dict[str, Any]] = None,
+        trace: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """
-        让模型输出 JSON 字符串。
-        注意：有些平台支持 response_format=json_object，有些不支持。
-        为了更稳：即便你传了 response_format，也仍然用 system 强约束“只输出 JSON”。
-        """
         last_err = None
         for attempt in range(retries + 1):
+            t0 = time.perf_counter()
+            resp_text = None
+            parsed = None
             try:
                 kwargs = {}
                 if response_format is not None:
@@ -48,12 +69,44 @@ class LLMClient:
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
-                    timeout=self.timeout_sec,
                     **kwargs,
                 )
-                return resp.choices[0].message.content
+                resp_text = resp.choices[0].message.content
+                dt = time.perf_counter() - t0
+
+                if self.print_parsed_json:
+                    try:
+                        parsed = extract_json_object(resp_text)
+                    except Exception:
+                        parsed = None
+
+                if self.logger and self.verbose_llm_io:
+                    log_llm_call(
+                        logger=self.logger,
+                        trace=trace or {},
+                        system=system,
+                        user=user,
+                        response_text=resp_text,
+                        elapsed_s=dt,
+                        parsed_json=parsed,
+                        error=None,
+                    )
+                return resp_text
+
             except Exception as e:
+                dt = time.perf_counter() - t0
                 last_err = e
-                # 简单退避，避免频繁触发限流
+                if self.logger and self.verbose_llm_io:
+                    log_llm_call(
+                        logger=self.logger,
+                        trace=trace or {},
+                        system=system,
+                        user=user,
+                        response_text=resp_text,
+                        elapsed_s=dt,
+                        parsed_json=parsed,
+                        error=str(e),
+                    )
                 time.sleep(1.0 * (attempt + 1))
+
         raise RuntimeError(f"LLM 调用失败：{last_err}")

@@ -1,8 +1,8 @@
 # 模型/接口配置（DashScope OpenAI compatible）
 llm:
-  base_url: "https://deepseek.fosu.edu.cn/v1"
+  base_url: "https://poloai.top/v1"
   api_key_env: "QWEN_API_KEY"
-  model: "qwen-32b"
+  model: "qwen3-32b"
   temperature: 0.2
   top_p: 0.8
   max_tokens: 800
@@ -35,3 +35,13 @@ experiment:
 
   # 是否将讨论后的 final_score 作为最终分（否则用 pre_discussion_score）
   discussion_affects_score: true
+
+logging:
+  verbose_llm_io: true          # 每次请求打印完整对话
+  also_write_to_file: true      # 同时写入文件（强烈建议，否则控制台很快爆炸）
+  log_dir: "runs/logs"
+  print_parsed_json: true       # 额外打印解析后的 JSON（可读性更好）
+
+concurrency:
+  enabled: true
+  max_workers: 8                # 建议 = n_agents 或略小
