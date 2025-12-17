@@ -17,7 +17,7 @@ paths:
 # 实验开关
 experiment:
   # 三种评测方式：aggregation / incremental / summary_based
-  method: "aggregation"
+  method: "summary_based"
 
   use_persona: true
   use_discussion: true

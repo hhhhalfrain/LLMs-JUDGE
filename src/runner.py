@@ -67,7 +67,7 @@ def extract_json_object(text: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    m = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    m = re.search(r"\{.*", text, flags=re.DOTALL)
     if not m:
         raise ValueError(f"无法从输出中提取 JSON：{text[:200]}...")
     return json.loads(m.group(0))
@@ -375,7 +375,6 @@ class ThreadLocalLLM:
             except Exception as e:
                 dt = time.perf_counter() - t0
                 last_err = e
-                retryable = self._should_retry(e)
                 is_last = (attempt == max_attempts - 1)
 
                 # 失败也要写 JSONL（完整信息 + 堆栈）
@@ -385,7 +384,6 @@ class ThreadLocalLLM:
                         "elapsed_s": round(dt, 6),
                         "attempt": attempt + 1,
                         "max_attempts": max_attempts,
-                        "retryable": retryable,
                         "error": str(e),
                         "error_type": type(e).__name__,
                         "error_status_code": self._get_status_code(e),
@@ -408,8 +406,8 @@ class ThreadLocalLLM:
                     success=False,
                 )
 
-                # 不可重试 or 最后一次：结束
-                if (not retryable) or is_last:
+                # 最后一次：结束
+                if is_last:
                     # 让 stage 进度别“卡在 rem>0”（即使失败也算这个任务结束）
                     stage = trace.get("stage")
                     if self.tracker and stage:
