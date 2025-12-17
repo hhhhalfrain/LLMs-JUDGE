@@ -24,11 +24,11 @@ experiment:
   use_interest_filter: true
 
   # 讨论设置
-  discussion_rounds: 2
+  discussion_rounds: 1
   discussion_window: 10
 
   # 代理数量（从 personas.json 里取前 N 个；也可改为随机采样）
-  n_agents: 8
+  n_agents: 4
 
   # 评分保留几位小数（建议 1 位）
   score_decimals: 1

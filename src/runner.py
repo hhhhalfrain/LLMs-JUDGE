@@ -46,7 +46,7 @@ def run_all_books(cfg, llm):
     os.makedirs(cfg.paths.output_root, exist_ok=True)
 
     for book_dir in book_dirs:
-        meta_path = os.path.join(book_dir, "metadata.json")
+        meta_path = os.path.join(book_dir, "book_metadata.json")
         ch_path = os.path.join(book_dir, "chapters.json")
 
         meta = BookMeta.model_validate(read_json(meta_path))
