@@ -1,0 +1,1002 @@
+[
+  {
+    "uuid": "680d05eb3f52434dabeadbe95a7eb6e2",
+    "persona": "Diana Funderburk balances a structured, community‑focused life with a love for gardening, quilting, and historical storytelling, and they quietly battle occasional forgetfulness about medication and a habit of over‑committing to volunteer events.",
+    "sex": "Female",
+    "age": 75,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Diana Funderburk",
+    "username": "diana_funderburk"
+  },
+  {
+    "uuid": "c7f859574bdd47f7a3cef174d3bb9b88",
+    "persona": "Joan Ayer is a nature‑infused teenage artist who constantly sketches pine‑cone collages in the margins of notebooks, procrastinates on deadlines, finds solace in indie folk melodies while chasing the next perfect sunrise hike, and they quit coffee after school to fuel their late‑night drawing sessions.",
+    "sex": "Female",
+    "age": 16,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Joan Ayer",
+    "username": "joan_ayer"
+  },
+  {
+    "uuid": "3592802396ab4cc38ddc0fd46b5406d6",
+    "persona": "Dylan Rodriguez, a creatively restless 14‑year‑old who blends comic‑book art, reggaeton‑infused folk guitar, and desert photography, navigates intense emotions with journaled poetry, but they sometimes spiral into anxiety‑driven impulse spending and sleepless nights.",
+    "sex": "Male",
+    "age": 14,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Dylan Rodriguez",
+    "username": "dylan_rodriguez"
+  },
+  {
+    "uuid": "92c8e39fc924497a943c2487e677bf2b",
+    "persona": "Constance Palmer is a curiosity‑driven executive who balances boardroom strategy with watercolor splashes, habitually forgets to refill their water bottle, and can’t resist collecting vintage camera lenses at thrift stores, where they spend hours browsing for hidden gems.",
+    "sex": "Female",
+    "age": 28,
+    "education_level": "some_college",
+    "occupation": "chief_executive",
+    "name": "Constance Palmer",
+    "username": "constance_palmer"
+  },
+  {
+    "uuid": "6675f6d60cc84ddeb2515e6f60efd2e8",
+    "persona": "Jose Valencia blends a meticulous aerospace engineering career with a solitary, art‑driven imagination, navigating stress through meditation while persistently seeking balance between scientific rigor and creative expression.",
+    "sex": "Male",
+    "age": 49,
+    "education_level": "bachelors",
+    "occupation": "aerospace_engineer",
+    "name": "Jose Valencia",
+    "username": "jose_valencia"
+  },
+  {
+    "uuid": "33ee06f88a1f44d89a8225abbaf0e5e3",
+    "persona": "A routine‑driven teen, Kathleen Rodriguez blends organized ambition with a love for family‑centered traditions, a calm resilience, and a penchant for meticulously planning every facet of life, even if it sometimes makes spontaneous fun feel daunting, and they still seek small moments of spontaneity when possible.",
+    "sex": "Female",
+    "age": 15,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Kathleen Rodriguez",
+    "username": "kathleen.rodriguez"
+  },
+  {
+    "uuid": "120e1492449e49e882c7c125bf241064",
+    "persona": "Juan Muino, the disciplined elder who weaves precision woodworking, methodical budgeting, and community mentorship into daily life, is known for their stubborn devotion to analog clocks and a gentle habit of double‑checking every checklist before moving on, and they often chuckle at their own insistence on ticking off tasks in perfect order.",
+    "sex": "Male",
+    "age": 79,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Juan Muino",
+    "username": "juan_muino"
+  },
+  {
+    "uuid": "9142e8e5ead24e9bbf8e0e587cc18b51",
+    "persona": "Amanda Flewelling blends scientific rigor with Southern hospitality, orchestrating garden data, community events, and quilting threads into a lively tapestry of curiosity, reliability, and occasional sugar‑spooned indulgence, all while hoarding vintage garden catalogs for future reference.",
+    "sex": "Female",
+    "age": 67,
+    "education_level": "bachelors",
+    "occupation": "not_in_workforce",
+    "name": "Amanda Flewelling",
+    "username": "amandaflewelling"
+  },
+  {
+    "uuid": "3c20a659f793453bb4f7f6f44f6f44ff",
+    "persona": "Yasuo Le is a sociable, tech‑savvy tinkerer who channels chronic worry into meticulous RF work, yet often burns the midnight oil gaming retro arcades and can’t resist grabbing the karaoke mic whenever a favorite song plays.",
+    "sex": "Male",
+    "age": 38,
+    "education_level": "9th_12th_no_diploma",
+    "occupation": "radio_or_telecommunications_equipment_installer_or_repairer",
+    "name": "Yasuo Le",
+    "username": "yasuo_le"
+  },
+  {
+    "uuid": "5b22afff04d541c7aa256ab3767e1fea",
+    "persona": "Jason Speer is a 36‑year‑old customer‑service strategist whose methodical data‑driven mindset collides with a relentless appetite for surreal art, over‑caffeinating to power late‑night sketches, and a habit of chasing both budgets and creative instincts with equal competitive ferocity.",
+    "sex": "Male",
+    "age": 36,
+    "education_level": "some_college",
+    "occupation": "customer_service_representative",
+    "name": "Jason Speer",
+    "username": "jason.speer"
+  },
+  {
+    "uuid": "4fba94fa99304e87b0561785a11d1e3f",
+    "persona": "Skye Sutton is a disciplined, sociable construction pro who marries rigorous safety standards with a passion for line‑dancing, Tex‑Mex cooking, and community volunteering, yet they can’t resist an extra queso bite after a long shift and sometimes sacrifice sleep for weekend festivals.",
+    "sex": "Female",
+    "age": 28,
+    "education_level": "some_college",
+    "occupation": "construction_laborer",
+    "name": "Skye Sutton",
+    "username": "skye.sutton"
+  },
+  {
+    "uuid": "08bcb015b5a34de4808f76c7260df8b0",
+    "persona": "Taylor Cain thrives on structured creativity, channeling talkative energy into community gatherings and sustainable engineering, yet they can overcommit to hosting events, occasionally neglect personal downtime.",
+    "sex": "Female",
+    "age": 41,
+    "education_level": "graduate",
+    "occupation": "materials_engineer",
+    "name": "Taylor Cain",
+    "username": "taylor.cain"
+  },
+  {
+    "uuid": "a901abac171c4fdc91b8a0bf655a8d6a",
+    "persona": "Barry Pendarvis, 37, is a practical tinkerer who blends Midwestern work ethic with spontaneous curiosity, balancing workshop leadership ambitions with a love for classic rock, community sports, and impromptu road trips, while battling a habit of over‑commitment to hobby projects.",
+    "sex": "Male",
+    "age": 37,
+    "education_level": "some_college",
+    "occupation": "metal_worker_or_plastic_worker",
+    "name": "Barry Pendarvis",
+    "username": "barry.pendarvis"
+  },
+  {
+    "uuid": "9d45feb777874006a699e6ade9196274",
+    "persona": "At 42, Stefanie Burgos merges methodical precision with an insatiable curiosity, turning every patient chart, DIY project, and garden experiment into a quiet arena for disciplined mastery.",
+    "sex": "Female",
+    "age": 42,
+    "education_level": "high_school",
+    "occupation": "nursing_assistant",
+    "name": "Stefanie Burgos",
+    "username": "stefanie.burgos"
+  },
+  {
+    "uuid": "8598fb28738b47c7a2da026cb723a7cf",
+    "persona": "Jeremy Fernandez, a 40‑year‑old postal route master and quiet chronicler of Maryland’s everyday moments, balances disciplined logistics with a restless curiosity, often found snapping photos on early‑morning walks while secretly hoarding extra coffee mugs for his ever‑expanding collection.",
+    "sex": "Male",
+    "age": 40,
+    "education_level": "high_school",
+    "occupation": "postal_service_mail_carrier",
+    "name": "Jeremy Fernandez",
+    "username": "jeremy.fernandez"
+  },
+  {
+    "uuid": "07edacdeecfc40608a13e32795ce07f3",
+    "persona": "Floyd Reifsnider blends a quiet curiosity for vintage jazz, Leica photography, and model railways with a relaxed, sometimes disorganized work ethic, channeling a competitive edge into meticulous logistics and home‑brewing experiments while quietly wrestling with persistent worry.",
+    "sex": "Male",
+    "age": 56,
+    "education_level": "high_school",
+    "occupation": "shipping_receiving_or_inventory_clerk",
+    "name": "Floyd Reifsnider",
+    "username": "floyd.reifsnider"
+  },
+  {
+    "uuid": "30af9d57436e4e878836fe3cd2fbbb78",
+    "persona": "Lucas Kent is a solitary, data‑driven thinker who balances relentless curiosity with pragmatic low‑stress living, frequently worrying about details yet they find calm in early‑morning hikes and coffee experiments.",
+    "sex": "Male",
+    "age": 24,
+    "education_level": "some_college",
+    "occupation": "not_in_workforce",
+    "name": "Lucas Kent",
+    "username": "lucas_kent"
+  },
+  {
+    "uuid": "2e3caa2d80a644678d944e2e4741d46a",
+    "persona": "Violet Hillard, a bright‑hearted yet anxiety‑prone caregiver, blends competitive zest with meticulous organization, channeling their social energy into fitness and theater while occasionally succumbing to impulsive spending and midnight snack binges.",
+    "sex": "Female",
+    "age": 25,
+    "education_level": "high_school",
+    "occupation": "home_health_aide",
+    "name": "Violet Hillard",
+    "username": "violet.hillard"
+  },
+  {
+    "uuid": "9f39ab7e576f4888be62f6b4ba20aebc",
+    "persona": "Chelsea Baker is a meticulously organized CPA‑to‑be who blends compassionate mentorship, a competitive streak for running, and a love for wine‑filled evenings, all while battling a chronic worry habit that fuels their relentless pursuit of balance.",
+    "sex": "Female",
+    "age": 44,
+    "education_level": "bachelors",
+    "occupation": "accountant_or_auditor",
+    "name": "Chelsea Baker",
+    "username": "chelseabaker"
+  },
+  {
+    "uuid": "5d564fe5b4a34e639c7205ab7fa82d90",
+    "persona": "Chasiti Vaughn is a methodical art lover who balances solitary hikes with meticulous spreadsheet budgeting, never misses a photo‑editing deadline, yet habitually forgets to water houseplants and can binge‑listen to indie playlists while sketching.",
+    "sex": "Female",
+    "age": 23,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Chasiti Vaughn",
+    "username": "chasiti_vaughn"
+  },
+  {
+    "uuid": "23c20ad7a4d54fca90cc33687b7cf157",
+    "persona": "Mai Lo, a fourteen‑year‑old puzzle‑loving prodigy, blends disciplined coding, exacting piano practice, and orderly herb gardening into a uniquely analytical worldview that craves structure yet secretly indulges in late‑night comic book marathons, and they are known for their competitive edge in solving complex jigsaw puzzles.",
+    "sex": "Female",
+    "age": 14,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Mai Lo",
+    "username": "mai_lo_puzzle"
+  },
+  {
+    "uuid": "5a65f645aa114ee6b57eb730eb7ec2c2",
+    "persona": "Gabriela Rodriguez blends a competitive server streak, salsa‑floor swagger, and a tendency to forget appointments in favor of last‑minute dance sessions, all while meticulously plotting the launch of a community‑centric Mexican eatery.",
+    "sex": "Female",
+    "age": 36,
+    "education_level": "some_college",
+    "occupation": "waiter_or_waitress",
+    "name": "Gabriela Rodriguez",
+    "username": "gabriela_rodriguez"
+  },
+  {
+    "uuid": "d598b402526d4374b71cd2d94a2dc392",
+    "persona": "Isidro Basantes, a curiosity‑driven analyst‑artist, balances data crunching with late‑night guitar sessions, they obsessively check blood pressure before coffee, and habitually over‑organize their herb garden, yet often let worry steal a few hours of sleep.",
+    "sex": "Male",
+    "age": 45,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Isidro Basantes",
+    "username": "isidro_basantes"
+  },
+  {
+    "uuid": "cbba83a801ef41c7b66148c5817f2950",
+    "persona": "Richard Hondras is a hands‑on OR veteran and woodworking enthusiast whose pragmatic curiosity, occasional disorganization, and chronic back pain coexist with a cautious financial mindset and a love for music and the outdoors, and they often balance these contrasts with quiet determination.",
+    "sex": "Male",
+    "age": 59,
+    "education_level": "high_school",
+    "occupation": "surgical_technologist",
+    "name": "Richard Hondras",
+    "username": "richard.hondras"
+  },
+  {
+    "uuid": "b8cb9cf9583a40f8b030cdb0225f7cf3",
+    "persona": "Nicholas Riley, they are a routine‑obsessed, quietly competitive mentor who blends solitary hobbies with meticulous work habits, occasionally letting worry drive splurges and over‑seasoning.",
+    "sex": "Male",
+    "age": 64,
+    "education_level": "some_college",
+    "occupation": "customer_service_representative",
+    "name": "Nicholas Riley",
+    "username": "nicholas_riley"
+  },
+  {
+    "uuid": "7becb1708ea64c7d91186b0b22f3d503",
+    "persona": "Gwen Alex, a 97‑year‑old former teacher, blends an unfaltering love for solitary artistic creation with modest frugality, gentle health routines, and a lifelong commitment to nurturing curiosity in their community, and they remain a quiet beacon of imagination.",
+    "sex": "Female",
+    "age": 97,
+    "education_level": "graduate",
+    "occupation": "secondary_school_teacher",
+    "name": "Gwen Alex",
+    "username": "gwen.alex"
+  },
+  {
+    "uuid": "701de44771694b3abb487edd27254230",
+    "persona": "Raymond Figueroa, a 51‑year‑old nurse‑educator who balances meticulous clinical precision with a restless curiosity for new technologies, habitually worries about patient outcomes and personal finances, yet finds calm in woodworking, folk music, and mountain hikes, often juggling stress‑relief meditation with occasional impulsive splurges on hobby gear.",
+    "sex": "Male",
+    "age": 51,
+    "education_level": "bachelors",
+    "occupation": "registered_nurse",
+    "name": "Raymond Figueroa",
+    "username": "raymond_figueroa"
+  },
+  {
+    "uuid": "2be427dbd2ba4ddc98b73fd038c97adc",
+    "persona": "Melissa Brunet fuses disciplined operational expertise with a quiet love of puzzles, channeling that curiosity into strategic leadership while occasionally forgetting to water their garden on rainy days.",
+    "sex": "Female",
+    "age": 60,
+    "education_level": "graduate",
+    "occupation": "manager",
+    "name": "Melissa Brunet",
+    "username": "melissa_brunet"
+  },
+  {
+    "uuid": "b70f0e9b00114c8a89ec9d4eff04f626",
+    "persona": "Heidi Carrillo blends analytical rigor with garden‑grown serenity, channeling curiosity into data‑driven mentorship while occasionally worrying about perfection, and finds balance through quilting, birdwatching, and a gentle devotion to community health.",
+    "sex": "Female",
+    "age": 61,
+    "education_level": "graduate",
+    "occupation": "operations_research_analyst",
+    "name": "Heidi Carrillo",
+    "username": "heidi.carrillo"
+  },
+  {
+    "uuid": "ce3fdd7e8f9c46759b1334f214480cd0",
+    "persona": "Uriel Roberson is a curious, art‑obsessed ten‑year‑old who juggles Scratch coding, dancing, and neighborhood adventures with a laid‑back vibe that sometimes leaves their workspace a colorful mess.",
+    "sex": "Female",
+    "age": 10,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Uriel Roberson",
+    "username": "uriel_roberson"
+  },
+  {
+    "uuid": "ce83d54e5e654af2909510be646b52ae",
+    "persona": "Glenda Little’s life is a calibrated blend of aviation precision, community‑centered energy, and hands‑on curiosity, punctuated by a habit of checking aircraft manuals before bedtime while they occasionally over‑commit to DIY projects that leave their garage pleasantly chaotic.",
+    "sex": "Female",
+    "age": 47,
+    "education_level": "high_school",
+    "occupation": "aircraft_mechanic_or_service_technician",
+    "name": "Glenda Little",
+    "username": "glenda_little"
+  },
+  {
+    "uuid": "683af344172a46a59dc5a3a085214b87",
+    "persona": "Timothy Burns blends Midwestern modesty, lifelong curiosity for art and mechanics, and a methodical yet generous spirit into a retirement defined by community service, creative expression, and quiet devotion to preserving family legacy.",
+    "sex": "Male",
+    "age": 75,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Timothy Burns",
+    "username": "tim_burns"
+  },
+  {
+    "uuid": "8970481c4fcc4873a4339da34aac674a",
+    "persona": "Erin Riviere is a curiously relaxed 19‑year‑old artist who blends watercolor with digital media, they live for spontaneous hikes and mural projects, and they habitually forget to file taxes on time.",
+    "sex": "Female",
+    "age": 19,
+    "education_level": "some_college",
+    "occupation": "not_in_workforce",
+    "name": "Erin Riviere",
+    "username": "erin_riviere"
+  },
+  {
+    "uuid": "a97d4184c8184ec19d206b47978e3ff9",
+    "persona": "Andrea Brooks is a curious, art‑obsessed retiree who balances a relaxed, sometimes disorganized lifestyle with a fiercely competitive streak in chess and design critique, channeling their emotional stability into lifelong learning and occasional splurges on vintage treasures.",
+    "sex": "Female",
+    "age": 65,
+    "education_level": "bachelors",
+    "occupation": "designer",
+    "name": "Andrea Brooks",
+    "username": "andreabrooks"
+  },
+  {
+    "uuid": "8affc8ff63cd439bad4cc105aa4eab03",
+    "persona": "Dimitrios Putman is a calm, curiosity-driven 10-year-old whose love for building LEGO forts, coding in Scratch, and helping friends blends with a habit of misplacing his soccer cleats and forgetting his water bottle.",
+    "sex": "Male",
+    "age": 10,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Dimitrios Putman",
+    "username": "dimitrios_putman"
+  },
+  {
+    "uuid": "ecea369ddadb499ca66152cd97507f63",
+    "persona": "Jessica Jones blends disciplined organization with garden‑grown curiosity, balancing a love of Southern heritage and community service with a worry‑prone mind that finds solace in yoga, good cooks, and well‑planned family trips.",
+    "sex": "Female",
+    "age": 59,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Jessica Jones",
+    "username": "jessicajones"
+  },
+  {
+    "uuid": "57e5d501a3374e8bb220c08bdbf7f4ea",
+    "persona": "Bryce Johnson is a methodical physician‑researcher who finds balance between diagnosing complex cases and painting tranquil watercolors, yet habitually forgets to eat lunch during back‑to‑back clinic sessions.",
+    "sex": "Male",
+    "age": 32,
+    "education_level": "some_college",
+    "occupation": "physician",
+    "name": "Bryce Johnson",
+    "username": "bryce_johnson"
+  },
+  {
+    "uuid": "aeea1acce57645ea9e6ae4c2f79f5f1d",
+    "persona": "Kathleen Coleman melds relentless curiosity for sustainable materials with a lively social streak, turning every sketch, bike ride, and lab experiment into a playground for creative problem‑solving.",
+    "sex": "Female",
+    "age": 22,
+    "education_level": "bachelors",
+    "occupation": "materials_engineer",
+    "name": "Kathleen Coleman",
+    "username": "kathleen.coleman"
+  },
+  {
+    "uuid": "1919e32845524b4c9f8b9bb113f5491c",
+    "persona": "Ellen Black is a 36‑year‑old blend of methodical painter, competitive board‑gamer, and weekend runner, whose relentless curiosity drives them to perfect every wall finish while secretly hoarding spare paint swatches for future projects.",
+    "sex": "Female",
+    "age": 36,
+    "education_level": "high_school",
+    "occupation": "painter_or_paperhanger",
+    "name": "Ellen Black",
+    "username": "ellenBlack"
+  },
+  {
+    "uuid": "aec8f3266642456b8db5192227150e40",
+    "persona": "Brent Williamson, a 38‑year‑old mountain‑dwelling artist‑facilitator, channels boundless curiosity into collaborative creativity even as worry and last‑minute planning keep life delightfully chaotic.",
+    "sex": "Male",
+    "age": 38,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Brent Williamson",
+    "username": "brent.williamson"
+  },
+  {
+    "uuid": "2d41316bc5d44b68a73f4997c7cf36a6",
+    "persona": "Mariela Garcia blends fierce courtroom determination with a salsa‑filled social life, often juggling deadlines with spontaneous dance nights and a heartfelt commitment to community advocacy.",
+    "sex": "Female",
+    "age": 28,
+    "education_level": "some_college",
+    "occupation": "lawyer",
+    "name": "Mariela Garcia",
+    "username": "mariela_garcia"
+  },
+  {
+    "uuid": "a97da98102b840bebf199fe940c77baf",
+    "persona": "Dewayne Clark is a disciplined, curiosity‑driven scholar who balances solitary hobbies—kayaking, woodworking, and homebrewing—with a competitive streak that fuels his academic ambitions, all while occasionally indulging in late‑night grading marathons and a stubborn reluctance to delegate.",
+    "sex": "Male",
+    "age": 39,
+    "education_level": "some_college",
+    "occupation": "postsecondary_teacher",
+    "name": "Dewayne Clark",
+    "username": "dewayne_clark"
+  },
+  {
+    "uuid": "3384078b976f40e6b9662853818007c1",
+    "persona": "Zarah Vegacintron blends relentless curiosity with methodical organization, orchestrates senior center dances, sometimes overcommits to volunteer events, and never passes up an opportunity to share freshly baked pastelitos with anyone who stops by, as they love spreading joy through food.",
+    "sex": "Female",
+    "age": 78,
+    "education_level": "some_college",
+    "occupation": "not_in_workforce",
+    "name": "Zarah Vegacintron",
+    "username": "zarahvegacintron"
+  },
+  {
+    "uuid": "2e7ef0586d464fb8839f73ddfb7ad8d5",
+    "persona": "Dulce Fernandez, a detail‑driven yet vivacious administrator who battles chronic worry with salsa, yoga, and nightly cooking marathons, often overbooks their calendar but finds balance through structured planning and spontaneous dance breaks.",
+    "sex": "Female",
+    "age": 42,
+    "education_level": "graduate",
+    "occupation": "first_line_supervisor_of_office_or_administrative_support_worker",
+    "name": "Dulce Fernandez",
+    "username": "dulce.fernandez"
+  },
+  {
+    "uuid": "770effc70afc4f388ea129517b8501b5",
+    "persona": "William Jansen is a routine-loving, sociable landscape veteran who blends meticulous garden design with lively community leadership, a cautious financial approach, and a penchant for classic baseball, folk music, and modest culinary comforts, and they radiate a warm, talkative presence wherever they go.",
+    "sex": "Male",
+    "age": 62,
+    "education_level": "some_college",
+    "occupation": "landscaping_or_groundskeeping_worker",
+    "name": "William Jansen",
+    "username": "williamjansen"
+  },
+  {
+    "uuid": "5edd5d10ff4640b5915b0fc36836bb13",
+    "persona": "Mohammed Ducker blends meticulous hands‑on craftsmanship with a gentle, anxiety‑prone soul, finding calm in model trains, garden soil, and quiet jazz, even as they sometimes forget appointments while chasing the next perfect screw.",
+    "sex": "Male",
+    "age": 65,
+    "education_level": "associates",
+    "occupation": "not_in_workforce",
+    "name": "Mohammed Ducker",
+    "username": "mducker"
+  },
+  {
+    "uuid": "c30c2bfe628c43dbae417da14d16b519",
+    "persona": "James Freeman, a disciplined yet easy‑going retired educator, balances a love of structure with spontaneous garden experiments, competitive golf swings, and a penchant for hoarding vintage history books.",
+    "sex": "Male",
+    "age": 65,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "James Freeman",
+    "username": "james_freeman"
+  },
+  {
+    "uuid": "4a67e4a956064ab7b1d78990722153f4",
+    "persona": "Cheila Santos is a methodical, curiosity‑driven mentor who balances a love for solitary creativity with a relentless drive for operational excellence, all while keeping a quiet worry about perfection and a habit of over‑packing lunch boxes for their own peace of mind.",
+    "sex": "Female",
+    "age": 57,
+    "education_level": "graduate",
+    "occupation": "packer_or_packager",
+    "name": "Cheila Santos",
+    "username": "cheila.santos"
+  },
+  {
+    "uuid": "b48052c8d5c7470eb98c28050ea0a4e7",
+    "persona": "Corey Broomfield balances a competitive streak in gaming and basketball with a laid‑back, DIY mindset, turning curiosity into practical projects while occasionally forgetting to plan ahead, creating a uniquely improvisational path toward his future garage‑studio.",
+    "sex": "Male",
+    "age": 16,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Corey Broomfield",
+    "username": "corey_broomfield"
+  },
+  {
+    "uuid": "0c4a75e795d1425eb68a4d74466a8eed",
+    "persona": "Marleen Martin is a 93‑year‑old community‑focused educator who balances meticulous organization with a love for spontaneous garden gossip, a sweet tooth for peach cobbler, and a lingering habit of planning the next story session before finishing the current one, they remain a steady anchor for both teachers and seniors alike.",
+    "sex": "Female",
+    "age": 93,
+    "education_level": "bachelors",
+    "occupation": "not_in_workforce",
+    "name": "Marleen Martin",
+    "username": "marleen.martin"
+  },
+  {
+    "uuid": "07ec5ccecc2f4109b91d247f2b8c9d66",
+    "persona": "Arturo Hernandez, a fiercely competitive bowler and charismatic festival MC, balances their precision machining career with a love for tinkering, yet they often forget to schedule physiotherapy appointments while obsessively perfecting their homemade tamales.",
+    "sex": "Male",
+    "age": 56,
+    "education_level": "high_school",
+    "occupation": "machinist",
+    "name": "Arturo Hernandez",
+    "username": "arturohernandez"
+  },
+  {
+    "uuid": "cfe47a0396b24b5daf50f21ca73d41fd",
+    "persona": "Daniel Hancock blends meticulous organization with a chatty, community‑centered spirit, obsessively tracking garden yields and budget spreadsheets while worrying over every detail, and they occasionally lose track of time during lively volunteer meetings.",
+    "sex": "Male",
+    "age": 66,
+    "education_level": "some_college",
+    "occupation": "not_in_workforce",
+    "name": "Daniel Hancock",
+    "username": "daniel_hancock"
+  },
+  {
+    "uuid": "e1135b2cf5d9495790d9b12ec631706c",
+    "persona": "Christopher Dennis is a methodical, 72-year-old polymath who fuses engineering precision with abstract artistry; they channel worry into disciplined journaling and nurture intergenerational creativity through mentorship and maker workshops.",
+    "sex": "Male",
+    "age": 72,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Christopher Dennis",
+    "username": "christopher.dennis"
+  },
+  {
+    "uuid": "11720ebb1d9349a1874a9047eb8772e2",
+    "persona": "Milagros Cobos is a quietly ambitious 24-year-old construction professional who balances hands-on craftsmanship with a love for solitary creative pursuits, managing anxiety through routine mindfulness while steadily building toward a sustainable-focused supervisory career.",
+    "sex": "Female",
+    "age": 24,
+    "education_level": "some_college",
+    "occupation": "construction_laborer",
+    "name": "Milagros Cobos",
+    "username": "milagros_cobos"
+  },
+  {
+    "uuid": "8adb38923ed9441d94751e6a5aee867b",
+    "persona": "Ashlee Smith merges a lifelong love of precise, hands‑on problem solving with a competitive streak and a habit of over‑stocking their workshop, balancing methodical routines and occasional impulsive tool splurges while they never miss a chance to watch a sunrise over the Appalachian hills.",
+    "sex": "Female",
+    "age": 55,
+    "education_level": "9th_12th_no_diploma",
+    "occupation": "computer_automated_teller_or_office_machine_repairer",
+    "name": "Ashlee Smith",
+    "username": "ashlee_smith"
+  },
+  {
+    "uuid": "2caa5e766f3544a3867696f7ee848a04",
+    "persona": "A structured yet sociable leader, Christopher Obrien blends meticulous program management with a love for Appalachian outdoors, folk music, and community theater, while balancing disciplined finances, proactive health habits, and a penchant for occasional indulgent treats.",
+    "sex": "Male",
+    "age": 46,
+    "education_level": "high_school",
+    "occupation": "director_religious_activities_or_education",
+    "name": "Christopher Obrien",
+    "username": "christopher.obrien"
+  },
+  {
+    "uuid": "e75229fd30444ff19060ef1f1ee77cbe",
+    "persona": "Elliot Brunson is a structured, self‑reliant 60‑year‑old who blends meticulous woodworking, cautious finances, and a quiet competitive streak into a life anchored by community heritage, disciplined routines, and occasional bouts of anxiety.",
+    "sex": "Male",
+    "age": 60,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Elliot Brunson",
+    "username": "elliotbrunson"
+  },
+  {
+    "uuid": "01dee6f0968f449e9b5fcd2fae8fbed1",
+    "persona": "Crescencio Wells balances a steadfast love for routine—a sunrise mountain walk, a weekly bridge game, and daily drumming circles—with a mischievous forgetfulness that leaves tools misplaced and appointments double‑booked, crafting a life that is both disciplined and delightfully disorganized, and they often smile at the chaos they create.",
+    "sex": "Male",
+    "age": 66,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Crescencio Wells",
+    "username": "crescenciowells"
+  },
+  {
+    "uuid": "69dc946460b741349118cafac46acc15",
+    "persona": "Marko Frazier is a curiosity‑driven retail supervisor who balances practical leadership with tech‑savvy experiments, disciplined finances peppered with occasional splurges, a proactive yet imperfect health routine, an active love of hiking and local sports, a keen ear for indie music, budget‑conscious travel dreams, and a hearty home‑cooking hobby, all colored by a steady, organized yet flexible outlook.",
+    "sex": "Male",
+    "age": 21,
+    "education_level": "high_school",
+    "occupation": "first_line_supervisor_of_retail_sales_worker",
+    "name": "Marko Frazier",
+    "username": "marko.frazier"
+  },
+  {
+    "uuid": "f5f416e4062d4fa8b3fec96f3889c802",
+    "persona": "Sumintra Nguyen blends a meticulous HR career with boundless curiosity for community, culture, and cuisine, yet habitually over-books volunteer commitments, sometimes sacrificing personal rest for the sake of helping others.",
+    "sex": "Male",
+    "age": 63,
+    "education_level": "bachelors",
+    "occupation": "human_resources_worker",
+    "name": "Sumintra Nguyen",
+    "username": "sumintra_nguyen"
+  },
+  {
+    "uuid": "8fbf0af41fbe47aa95db959148a6778c",
+    "persona": "Alfredo Sandison blends disciplined engineering precision with a boundless artistic imagination, habitually juggling CAD drafts while strumming classical guitar, but they tend to hoard vintage guitar strings and forget to water their garden during busy project weeks.",
+    "sex": "Male",
+    "age": 63,
+    "education_level": "bachelors",
+    "occupation": "engineer",
+    "name": "Alfredo Sandison",
+    "username": "alfredosandison"
+  },
+  {
+    "uuid": "a1af571b5ee64eb7a7062aba7ede231c",
+    "persona": "Phillip Salzwedel blends a methodical, routine-driven work ethic with a love for community sports, woodworking, and outdoor pursuits, all while maintaining a calm, competitive edge and a habit of meticulously planning every facet of his life.",
+    "sex": "Male",
+    "age": 51,
+    "education_level": "high_school",
+    "occupation": "inspector_tester_sorter_sampler_or_weigher",
+    "name": "Phillip Salzwedel",
+    "username": "phillip_salzwedel"
+  },
+  {
+    "uuid": "5db9b66e457c42b28ae5443d67a492f4",
+    "persona": "Nhu Kim is a meticulous electrician who balances routine-driven work, cautious finances, health-focused anxieties, and a quiet love for Tai Chi, gardening, and home-cooked broth while quietly worrying about the path to master licensure.",
+    "sex": "Male",
+    "age": 36,
+    "education_level": "some_college",
+    "occupation": "electrician",
+    "name": "Nhu Kim",
+    "username": "nhu_kim"
+  },
+  {
+    "uuid": "bcdc9361ec024888b0140ecdaf9d7e07",
+    "persona": "Irma Morrow, a 78‑year‑old community champion, blends Southern hospitality with modern curiosity, coordinating gardening, quilting, and intergenerational potlucks, while occasionally misplacing reading glasses and indulging in extra bingo chips, and they remain the heart of every neighborhood gathering.",
+    "sex": "Female",
+    "age": 78,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Irma Morrow",
+    "username": "irma_morrow"
+  },
+  {
+    "uuid": "a4738da5bade4013ae6725f60e152fff",
+    "persona": "Vaishaliben Patel blends a structured, compassionate tech career with a love for yoga, puzzle‑solving, and experimental fusion cooking, while juggling mild anxiety, diligent budgeting, and a penchant for late‑night Bollywood marathons.",
+    "sex": "Female",
+    "age": 28,
+    "education_level": "bachelors",
+    "occupation": "computer_support_specialist",
+    "name": "Vaishaliben Patel",
+    "username": "vaishaliben.patel"
+  },
+  {
+    "uuid": "0bc3cbe3ac974e569cb8a668a95d1fdd",
+    "persona": "Marais Quinlan is a highly organized, imaginative 11‑year‑old whose penchant for solitary creative projects is balanced by a cautious heart that often worries about the smallest details.",
+    "sex": "Female",
+    "age": 11,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Marais Quinlan",
+    "username": "marais_quinlan"
+  },
+  {
+    "uuid": "6258f7569e1b45bd933af53ea9146fdc",
+    "persona": "Wilfredo Tolentino balances a meticulous, community‑focused mindset with restless curiosity, juggling studies, soccer, gaming, and cooking while wrestling with lingering anxiety and a habit of staying up late perfecting video‑game strategies.",
+    "sex": "Male",
+    "age": 18,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Wilfredo Tolentino",
+    "username": "wilfredo_tolentino"
+  },
+  {
+    "uuid": "663c895059e1494e8950d287000f056d",
+    "persona": "Julian Hoarau is a solitary, curiosity‑driven landscaper who channels competitive precision into sustainable garden designs, saves prudently yet splurges on niche seeds, and balances occasional health neglect with a disciplined hobby‑focused lifestyle.",
+    "sex": "Male",
+    "age": 30,
+    "education_level": "high_school",
+    "occupation": "landscaping_or_groundskeeping_worker",
+    "name": "Julian Hoarau",
+    "username": "julian.hoarau"
+  },
+  {
+    "uuid": "76009464420543d19527c908213fbdf0",
+    "persona": "Melanie Handy, a 20‑year‑old sonographer who fuses a curiosity for cutting‑edge imaging with a love for mountain hikes, healthy cooking, and sci‑fi daydreams, balances a tight student budget with spontaneous photography trips, all while managing a lingering knee ache and a penchant for late‑night coffee.",
+    "sex": "Female",
+    "age": 20,
+    "education_level": "some_college",
+    "occupation": "diagnostic_medical_sonographer",
+    "name": "Melanie Handy",
+    "username": "melanie.handy"
+  },
+  {
+    "uuid": "8fb11b6f48cb436fa0699f252b0ebb00",
+    "persona": "Joanna Simmons, a meticulous pipefitting veteran with a boundless imagination, balances a disciplined, safety‑first work ethic with a habit of over‑thinking every detail, often losing sleep to worry yet finding solace in late‑night jazz and rhythmic metal sculpture.",
+    "sex": "Female",
+    "age": 63,
+    "education_level": "high_school",
+    "occupation": "plumber_pipefitter_or_steamfitter",
+    "name": "Joanna Simmons",
+    "username": "joannasimmons"
+  },
+  {
+    "uuid": "b583655a1b2042959a9f98d176a62ce3",
+    "persona": "Charlie Mcclain is a fiercely organized, curiosity‑driven ten‑year‑old who balances relentless perfectionism with a love for LEGO, piano, and leaf collecting, yet they sometimes forget to tidy up and tend to over‑plan their playtime.",
+    "sex": "Male",
+    "age": 10,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Charlie Mcclain",
+    "username": "charlie_mcclain"
+  },
+  {
+    "uuid": "b2f496faabba420a934f8894a246903a",
+    "persona": "Curiosity fuels Patrick Ferrell’s artistic bursts, social charisma, and laid‑back approach, making them a talkative, kindness‑driven 12‑year‑old who juggles sketches, games, and friends while occasionally forgetting to tidy their desk.",
+    "sex": "Male",
+    "age": 12,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Patrick Ferrell",
+    "username": "patrick_ferrell"
+  },
+  {
+    "uuid": "385977d32e91484e90247630e3676172",
+    "persona": "Jennifer Bond blends a gardener’s curiosity with an administrator’s precision, spending afternoons knitting, mentoring teachers, and occasionally misplacing their reading glasses on the garden bench; they delight in quiet moments of reflection.",
+    "sex": "Female",
+    "age": 74,
+    "education_level": "some_college",
+    "occupation": "education_or_childcare_administrator",
+    "name": "Jennifer Bond",
+    "username": "jennifer_bond"
+  },
+  {
+    "uuid": "fa40767e558248b3bf278919a69dc658",
+    "persona": "Maurice King is a curiosity‑driven analytics leader who balances methodical data work with coastal photography, sailing, and a penchant for Southern folk art, all while wrestling with stress‑induced worry and occasional impulsive splurges on gear.",
+    "sex": "Male",
+    "age": 40,
+    "education_level": "bachelors",
+    "occupation": "operations_research_analyst",
+    "name": "Maurice King",
+    "username": "mauriceking"
+  },
+  {
+    "uuid": "13ceb2262ca34f4680f9069055602f60",
+    "persona": "David Rome is a quietly curious 32‑year‑old who balances a solitary, art‑driven soul with a resilient, friendly demeanor, often forgetting to file paperwork but they never miss a sunrise hike or a chance to capture a still moment on camera.",
+    "sex": "Male",
+    "age": 32,
+    "education_level": "high_school",
+    "occupation": "sales_representative_of_services",
+    "name": "David Rome",
+    "username": "david_rome"
+  },
+  {
+    "uuid": "b665ee4f63d44ca8b3b0c7f7a2fd4b20",
+    "persona": "Virginia Netro is an endlessly curious 10‑year‑old who balances meticulous notebook‑keeping with whimsical day‑dreams, but can be forgetful about bringing her inhaler and sometimes spends too long hoarding LEGO bricks instead of playing outside.",
+    "sex": "Female",
+    "age": 10,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Virginia Netro",
+    "username": "virginianetro"
+  },
+  {
+    "uuid": "c356b34507e14c23b50fb8420a36afcb",
+    "persona": "Anthony Portanova balances a pragmatic construction mindset with a restless curiosity for classic cars and sustainable design, yet they occasionally procrastinate on routine health check‑ups and can’t resist an extra order of brisket when the grill is fired up.",
+    "sex": "Male",
+    "age": 58,
+    "education_level": "high_school",
+    "occupation": "construction_manager",
+    "name": "Anthony Portanova",
+    "username": "aportanova"
+  },
+  {
+    "uuid": "8f4cf474b2b24ae1bc87053915a22f6c",
+    "persona": "Casandra Mitchell blends a quiet curiosity for futuristic tech with hands‑on practicality, turning solitary guitar practice and sunrise river walks into a personal sanctuary while they occasionally procrastinate on paperwork for their electrician license.",
+    "sex": "Female",
+    "age": 18,
+    "education_level": "some_college",
+    "occupation": "installation_maintenance_or_repair_worker",
+    "name": "Casandra Mitchell",
+    "username": "casandra.mitchell"
+  },
+  {
+    "uuid": "4012724424374fcbb994488c788ecda8",
+    "persona": "Zayn Diaz, a data‑driven conservation leader who balances a competitive streak with community‑centric enthusiasm, can be found mapping trails on a smartphone while simultaneously perfecting ceviche, yet often forgets to water their indoor plants during busy grant deadlines.",
+    "sex": "Male",
+    "age": 44,
+    "education_level": "high_school",
+    "occupation": "conservation_scientist_or_forester",
+    "name": "Zayn Diaz",
+    "username": "zayn_diaz"
+  },
+  {
+    "uuid": "729797e6977c4b1fa0d227b738fb17eb",
+    "persona": "Richa Shankwiler blends Midwestern pragmatism with Florida’s easygoing hospitality, turning meticulous budgeting into thriving community garden projects while occasionally misplacing a garden trowel as a reminder of her relaxed stance on strict obligations.",
+    "sex": "Female",
+    "age": 62,
+    "education_level": "associates",
+    "occupation": "not_in_workforce",
+    "name": "Richa Shankwiler",
+    "username": "richa_shankwiler"
+  },
+  {
+    "uuid": "baa5df0675784229b6444348822216bf",
+    "persona": "Nicholas Hogan is a hands‑on, curiosity‑driven craftsman who balances meticulous metalwork and painting with spontaneous creative ventures, a penchant for outdoor adventure, and a dream of turning hobby into a community‑focused studio.",
+    "sex": "Male",
+    "age": 42,
+    "education_level": "associates",
+    "occupation": "assembler_or_fabricator",
+    "name": "Nicholas Hogan",
+    "username": "nicholashogan"
+  },
+  {
+    "uuid": "de579676244146eca1af07bb75a80357",
+    "persona": "Hong Cheung, an 83‑year‑old art scholar with a competitive streak, blends disciplined curation with whimsical brushstrokes, saves prudently for legacy projects, monitors blood pressure, hikes weekly, and indulges in tea‑ceremony rituals and vintage wine.",
+    "sex": "Male",
+    "age": 83,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Hong Cheung",
+    "username": "hong_cheung"
+  },
+  {
+    "uuid": "69338f82bbb44b6d92023e0850813c50",
+    "persona": "Brooklyn Smith is a community-focused leader who balances pragmatic flexibility with a penchant for last-minute fixes, eases stress through gentle yoga and journaling, and continually juggles garden-to-table meals, historic fiction, and a quiet worry about meeting every expectation.",
+    "sex": "Female",
+    "age": 55,
+    "education_level": "bachelors",
+    "occupation": "manager",
+    "name": "Brooklyn Smith",
+    "username": "brooklyn.smith"
+  },
+  {
+    "uuid": "9939cf4deabd4c4d9796b639bc4e9d77",
+    "persona": "Georgine Kalantar, a relentlessly curious 17‑year‑old who juggles livestream gaming, DIY fashion, and spontaneous community events, thrives on flexibility but often misplaces deadlines, relying on their unflappable calm to navigate the chaos.",
+    "sex": "Female",
+    "age": 17,
+    "education_level": "less_than_9th",
+    "occupation": "not_in_workforce",
+    "name": "Georgine Kalantar",
+    "username": "georgine_kalantar"
+  },
+  {
+    "uuid": "33480cdd58954fa282111aefd36adbc6",
+    "persona": "Johan Fernandez is a methodical retired engineer who blends a love of gardening, woodworking, and family‑rooted cooking with cautious finances, occasional health worries, and quiet mentorship, finding balance through chess, traditional music, and small‑group volunteering.",
+    "sex": "Male",
+    "age": 78,
+    "education_level": "bachelors",
+    "occupation": "not_in_workforce",
+    "name": "Johan Fernandez",
+    "username": "johan_fernandez"
+  },
+  {
+    "uuid": "7c206948511f43f4b4cf09992b8a52ba",
+    "persona": "Woo Wong lives at the intersection of engineering precision and community spontaneity, turning garden plots, bridge tables, and tai chi mats into stages for lifelong learning and shared stories, all while juggling a modest pension, mild health quirks, and a relentless curiosity for the next project that they eagerly pursue.",
+    "sex": "Male",
+    "age": 87,
+    "education_level": "graduate",
+    "occupation": "not_in_workforce",
+    "name": "Woo Wong",
+    "username": "woo_wong"
+  },
+  {
+    "uuid": "e846c72e0ab84178949bb7f114984cb0",
+    "persona": "Ingrid Kimson, a 19‑year‑old data‑driven introvert, couples a competitive academic ambition with anxiety‑driven caution, channeling solitary creative pursuits and strict budgeting to maintain control and confidence.",
+    "sex": "Female",
+    "age": 19,
+    "education_level": "associates",
+    "occupation": "not_in_workforce",
+    "name": "Ingrid Kimson",
+    "username": "ingrid.kimson"
+  },
+  {
+    "uuid": "e9123d2e61924ec7a4794d67021c349a",
+    "persona": "David Hudson is a pragmatic yet laid‑back 19‑year‑old who mixes a passion for tech tinkering, street‑food explorations, and competitive basketball with calm resilience, even as occasional procrastination and impromptu gaming sprees punctuate their routine.",
+    "sex": "Male",
+    "age": 19,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "David Hudson",
+    "username": "davidhudson19"
+  },
+  {
+    "uuid": "67bc33f778894f08aa1bcdf26a5e77ad",
+    "persona": "Dale Mcgilvery blends meticulous structure with solitary creativity, channeling a lifelong love of quiet service, woodcraft, and genealogy into a steady, behind‑the‑scenes impact.",
+    "sex": "Male",
+    "age": 53,
+    "education_level": "high_school",
+    "occupation": "customer_service_representative",
+    "name": "Dale Mcgilvery",
+    "username": "dale.mcgilvery"
+  },
+  {
+    "uuid": "2b89568fcefb4d0181961d78a1c79ced",
+    "persona": "Henry Hall merges a structure‑driven mindset with a restless curiosity for machines, channeling stress through jogs, meditation, and nightly PC builds, yet sometimes succumbs to worry‑induced over‑planning that can stall spontaneity.",
+    "sex": "Male",
+    "age": 19,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Henry Hall",
+    "username": "henry_hall"
+  },
+  {
+    "uuid": "60cc4ef90272417b870ebaf9b300f49b",
+    "persona": "Sydnei Boyd balances a competitive, spreadsheet-driven mind with a love for solitary garden whispers, often forgetting to water tomatoes while they meticulously track loan repayment schedules.",
+    "sex": "Female",
+    "age": 59,
+    "education_level": "bachelors",
+    "occupation": "credit_counselor_or_loan_officer",
+    "name": "Sydnei Boyd",
+    "username": "sydnei_boyd"
+  },
+  {
+    "uuid": "bfebffe8b3dd4771b1a90e76292a532c",
+    "persona": "Daniel Carson epitomizes the quiet, meticulous organizer who can spend hours fine‑tuning a spreadsheet, find solace in solitary hikes, yet habitually forgets to water their houseplants and they procrastinate on personal projects until deadlines loom.",
+    "sex": "Male",
+    "age": 31,
+    "education_level": "associates",
+    "occupation": "receptionist_or_information_clerk",
+    "name": "Daniel Carson",
+    "username": "daniel.carson"
+  },
+  {
+    "uuid": "d20b3a0c396f49c5a3bc1f654cadb0fe",
+    "persona": "Pam Johnson is a detail‑oriented planner who balances a love of quiet routines with a secret penchant for spontaneous plant‑shopping sprees and late‑night crossword marathons.",
+    "sex": "Female",
+    "age": 19,
+    "education_level": "some_college",
+    "occupation": "not_in_workforce",
+    "name": "Pam Johnson",
+    "username": "pam_johnson"
+  },
+  {
+    "uuid": "6ce6a7b792b64f609a1d324bd3acfcd4",
+    "persona": "Mehul Silverman fuses a razor‑sharp negotiating edge from four decades in procurement with a quiet love for vintage Cadillacs, jazz vinyls, and chess, all while navigating mild health woes with disciplined pragmatism and a skeptical eye toward new trends, and they remain steadfastly analytical.",
+    "sex": "Male",
+    "age": 74,
+    "education_level": "some_college",
+    "occupation": "purchasing_agent",
+    "name": "Mehul Silverman",
+    "username": "mehul.silverman"
+  },
+  {
+    "uuid": "873dd26b4f3d4dfebfede0e572ee2218",
+    "persona": "Jane Terry blends steadfast routine with a gentle, disorganized charm, swapping garden gossip over sweet tea while habitually misplacing they favorite crochet needles, yet always finding joy in the simple comforts of home and community.",
+    "sex": "Female",
+    "age": 87,
+    "education_level": "high_school",
+    "occupation": "not_in_workforce",
+    "name": "Jane Terry",
+    "username": "janeterry"
+  },
+  {
+    "uuid": "f2fe78a7bba842bfb1c6a8dbc0dcba0d",
+    "persona": "Ruby Montgomery, a 22‑year‑old community‑driven planner, balances a love of Southern traditions with modern digital flair, juggling yoga, rose gardening, and late‑night concert merch splurges while staying focused on uplifting local businesses.",
+    "sex": "Female",
+    "age": 22,
+    "education_level": "some_college",
+    "occupation": "no_occupation",
+    "name": "Ruby Montgomery",
+    "username": "ruby.montgomery"
+  },
+  {
+    "uuid": "7402f72766b94a668f09f5f0219c94e6",
+    "persona": "Danny Clark, a 22‑year‑old property appraisal enthusiast who balances a love for solitary outdoor pursuits, competitive gaming, and methodical financial planning with a spontaneous, sometimes deadline‑averse work ethic, while they navigate a back strain and a disciplined yet occasionally impulsive lifestyle.",
+    "sex": "Male",
+    "age": 22,
+    "education_level": "bachelors",
+    "occupation": "property_appraiser_or_assessor",
+    "name": "Danny Clark",
+    "username": "danny_clark22"
+  },
+  {
+    "uuid": "7e23fe82713b4d8fb9971c4aeb443c92",
+    "persona": "Mary Riechmann blends meticulous nursing expertise, pragmatic financial habits, and solitary, nature‑centric hobbies into a steady, self‑reliant lifestyle marked by quiet competence, occasional disorganization, and a relentless pursuit of evidence‑based improvement.",
+    "sex": "Female",
+    "age": 48,
+    "education_level": "some_college",
+    "occupation": "registered_nurse",
+    "name": "Mary Riechmann",
+    "username": "mary.riechmann"
+  },
+  {
+    "uuid": "ec06193a5c9f469d9fd99b61a25ada3e",
+    "persona": "Alix Medina, they blend garden stewardship, culinary experimentation, and community storytelling into a relaxed yet purpose‑driven life, peppered with occasional disorganization and an unyielding curiosity about art and culture.",
+    "sex": "Female",
+    "age": 74,
+    "education_level": "some_college",
+    "occupation": "not_in_workforce",
+    "name": "Alix Medina",
+    "username": "alix_medina"
+  },
+  {
+    "uuid": "e08d2b5230b54766a95b7b7d4418c8af",
+    "persona": "Michelle Ramos, a sociable 57‑year‑old who balances a love for salsa‑filled dance nights, backyard gardening, and curating community art pop‑ups with a nervous habit of over‑worrying about schedules and finances, constantly seeks creative ways to blend tradition with modern flair.",
+    "sex": "Female",
+    "age": 57,
+    "education_level": "some_college",
+    "occupation": "stocker_or_order_filler",
+    "name": "Michelle Ramos",
+    "username": "michelle_ramos"
+  }
+]

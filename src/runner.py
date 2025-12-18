@@ -1,21 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-runner.py（精简控制台输出 + 完整对话写日志 + 多线程并发）
-----------------------------------------------------------------
-控制台输出：
-- 每次 LLM 请求仅输出一行摘要：book/agent/method/stage/chapter + stage进度(done/total/rem) + 耗时 + 输入/输出字符数 + parsed_keys
-- 同时会输出阶段开始 STAGE START（让你明确知道当前在哪个阶段）
-
-日志输出（runs/logs）：
-- 每本书一个 JSONL：{book}_{method}_{ts}.jsonl
-  每行包含一次请求的完整 system/user/assistant_raw/assistant_parsed/error 等，便于完整追踪与复盘
-- 另外 logger 仍会写一个普通 .log（里面是“摘要行”，不是全文）
-
-注意：
-- PROMPT 全部英文（满足你“评测英文小说”要求）
-- 多线程下讨论采用“按轮 barrier”：每轮所有 agent 看到相同的 latest N 条，再并发生成，最后按固定顺序合并，保证可复现
-"""
-
 from __future__ import annotations
 
 import os
