@@ -198,13 +198,13 @@ def main() -> None:
     # 约束 1：匹配不到就报错（而不是默默跳过）
     if missing:
         msg = "\n".join([f"- {t}" for t in missing])
-        # raise RuntimeError(
-        #     "以下书名在 books/ 下找不到可匹配的文件夹（只以 xlsx 书单为准，匹配失败直接报错）：\n"
-        #     f"{msg}\n\n"
-        #     f"当前 FUZZY_CUTOFF={FUZZY_CUTOFF}。你可以：\n"
-        #     f"1) 把文件夹名改得更像 xlsx 书名；\n"
-        #     f"2) 或调低 FUZZY_CUTOFF（在脚本顶部改）。"
-        # )
+        raise RuntimeError(
+            "以下书名在 books/ 下找不到可匹配的文件夹（只以 xlsx 书单为准，匹配失败直接报错）：\n"
+            f"{msg}\n\n"
+            f"当前 FUZZY_CUTOFF={FUZZY_CUTOFF}。你可以：\n"
+            f"1) 把文件夹名改得更像 xlsx 书名；\n"
+            f"2) 或调低 FUZZY_CUTOFF（在脚本顶部改）。"
+        )
 
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with OUT_JSON.open("w", encoding="utf-8") as f:
