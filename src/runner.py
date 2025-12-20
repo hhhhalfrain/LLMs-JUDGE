@@ -30,16 +30,6 @@ def write_json(path: str, obj: Any) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
-# abandoned
-# def list_book_dirs(books_root: str) -> List[str]:
-#     out = []
-#     for name in os.listdir(books_root):
-#         p = os.path.join(books_root, name)
-#         if os.path.isdir(p):
-#             out.append(p)
-#     return sorted(out)
-
-
 # =========================
 #  JSON 解析（鲁棒提取）
 # =========================
@@ -516,6 +506,7 @@ def prompt_summary_final(meta: Dict[str, Any], global_summary: Dict[str, Any], p
         "Task:\n"
         "- Write a critique in English (<= 220 words).\n"
         "- Give an overall score from 1.0 to 5.0 (allow 1 decimal).\n\n"
+
         "Return JSON:\n"
         "{\n"
         '  "critique": string,\n'
@@ -887,7 +878,7 @@ def _normalize_book_record(book_record: Dict[str, Any]) -> Tuple[Dict[str, Any],
     chapters = []
     for c in sorted(chs, key=lambda x: int(x.get("id", 0) or 0)):
         chapters.append({
-            "Number": int(c.get("id", 0) or 0),
+            "Number": int(c.get("Number", 0) or 0),
             "title": str(c.get("title", "")).strip(),
             "text": str(c.get("text", "")),
         })
