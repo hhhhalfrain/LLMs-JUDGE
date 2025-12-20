@@ -33,11 +33,11 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books.json"   # �
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "20251220_202208"
+BATCH_ID = "20251220_2306"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 
-MAX_EXPERIMENT_WORKERS = 2
+MAX_EXPERIMENT_WORKERS = 1
 START_STAGGER_SEC = 1.0
 
 # ✅ 新增：章节合并 batchsize
@@ -45,8 +45,8 @@ START_STAGGER_SEC = 1.0
 CHAPTER_BATCH_SIZE = 5   # <= 1 表示不合并（保持原样）
 
 # LLM 配置（千问 32B，DashScope compatible）
-LLM_BASE_URL = "https://poloai.top/v1"
-LLM_MODEL = "gpt-4o-mini"
+LLM_BASE_URL = "https://deepseek.fosu.edu.cn/v1"
+LLM_MODEL = "qwen-32b"
 API_KEY_ENV = "QWEN_API_KEY"
 
 LLM_TEMPERATURE = 0.6
@@ -62,7 +62,7 @@ RETRY_JITTER = 0.2
 FAIL_FAST = True
 
 # runner 内部：同一本书 agent 并发
-PER_BOOK_AGENT_WORKERS = 6
+PER_BOOK_AGENT_WORKERS = 1
 
 
 # -----------------------------
@@ -75,7 +75,7 @@ USE_INTEREST_FILTER_OPTS = [True]
 
 DISCUSSION_ROUNDS_OPTS = [2]
 DISCUSSION_WINDOW_OPTS = [10]
-N_AGENTS_OPTS = [8]
+N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
 DISCUSSION_AFFECTS_SCORE_OPTS = [True]
 
@@ -370,6 +370,9 @@ def run_one_experiment(
         chapter_batch_size=chapter_batch_size
     )
 
+    # TODO 测试：
+    books = books[:1]
+
     exp_root = OUTPUTS_ROOT / run_id
 
     should_run, done_path, running_path = prepare_experiment_dir(exp_root)
@@ -542,5 +545,5 @@ def test() -> None:
 
 
 if __name__ == "__main__":
-    # main()
-    test()
+    main()
+    # test()

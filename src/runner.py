@@ -380,8 +380,44 @@ def sys_json_only() -> str:
     return (
         "You are a strict JSON generator. "
         "Return ONLY a valid JSON object and nothing else. "
-        "Do not add markdown fences. Do not add commentary."
+        "No markdown. No explanations. No extra text."
     )
+
+
+def _persona_block(persona_text: Optional[str]) -> str:
+    """
+    强化 persona：把 persona 变成“你是谁 + 你怎么感受/怎么打分”的硬约束。
+    """
+    if not persona_text:
+        return ""
+    return "".join([
+        "READER PERSONA (this is YOU — stay in-character):\n",
+        f"{persona_text}\n\n",
+        "Persona grounding rules (MANDATORY):\n",
+        "- Treat the persona as your identity, values, and taste filter.\n",
+        "- Your judgments MUST reflect what this persona would notice, enjoy, dislike, or be sensitive to.\n",
+        "- Do NOT become a generic critic. Avoid neutral, academic voice unless the persona would do that.\n",
+        "- If uncertain, make the smallest plausible inference consistent with the persona.\n\n",
+    ])
+
+
+def _discussion_block(discussion_tail: List[str]) -> str:
+    """
+    强化讨论：要求仔细思考、提炼要点，并影响分数；同时鼓励反对意见避免羊群效应。
+    """
+    disc = "\n".join([f"- {m}" for m in discussion_tail]) if discussion_tail else "(none)"
+    return "".join([
+        "GROUP DISCUSSION (latest messages):\n",
+        f"{disc}\n\n",
+        "Discussion integration rules (MANDATORY):\n",
+        "- You MUST carefully read and integrate the discussion.\n",
+        "- Extract 2-4 concrete takeaways (arguments, observations, criticisms, or praise).\n",
+        "- Your score MUST be reconsidered after discussion:\n",
+        "  * Either change the score, OR clearly justify why you keep the same score despite the discussion.\n",
+        "- Avoid herd behavior: if the discussion seems one-sided, you MUST introduce at least one thoughtful counterpoint\n",
+        "  (minority view, missing nuance, alternative interpretation, or a caveat).\n",
+        "- When you mention discussion, refer to specific points (paraphrase). Do not hand-wave.\n\n",
+    ])
 
 
 def prompt_interest_filter(meta: Dict[str, Any], persona_text: Optional[str]) -> Tuple[str, str]:
@@ -389,178 +425,243 @@ def prompt_interest_filter(meta: Dict[str, Any], persona_text: Optional[str]) ->
     intro = meta["intro"]
     author = str(meta.get("author", "")).strip()
 
-    user = (
-        f"Book metadata:\n"
-        f"- Title: {book_name}\n"
-        f"- Blurb: {intro}\n\n"
-        + (f"- Author: {author}\n" if author else "")
-    )
-    if persona_text:
-        user += f"Reader persona:\n{persona_text}\n\n"
+    parts = [
+        "Book metadata:\n",
+        f"- Title: {book_name}\n",
+        (f"- Author: {author}\n" if author else ""),
+        f"- Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        "Task: Decide whether YOU (as this persona) would be interested enough to start reading this novel.\n",
+        "Be strict: if it does not fit your persona's tastes, values, emotional bandwidth, or genre tolerance, reject it.\n\n",
+        "Return JSON with fields:\n",
+        "{\n",
+        '  "keep": boolean,\n',
+        '  "interest_score": number (0-100),\n',
+        '  "reason": string\n',
+        "}\n",
+        "Constraints:\n",
+        "- The reason MUST explicitly connect to persona traits/preferences (not generic).\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
-    user += (
-        "Task: Decide whether this reader would be interested enough to read this novel.\n"
-        "Return JSON with fields:\n"
-        "{\n"
-        '  "keep": boolean,\n'
-        '  "interest_score": number (0-100),\n'
-        '  "reason": string\n'
-        "}\n"
-    )
-    return sys_json_only(), user
 
-
-def prompt_aggregation_chapter(meta: Dict[str, Any], chapter_text: str, prev_plot_summaries: List[str], persona_text: Optional[str]) -> Tuple[str, str]:
+def prompt_aggregation_chapter(
+    meta: Dict[str, Any],
+    chapter_text: str,
+    prev_plot_summaries: List[str],
+    persona_text: Optional[str],
+) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
+    author = str(meta.get("author", "")).strip()
     prev = "\n".join([f"- {s}" for s in prev_plot_summaries]) if prev_plot_summaries else "(none)"
 
-    user = f"Novel metadata:\nTitle: {book_name}\nBlurb: {intro}\n\n"
-    if persona_text:
-        user += f"Reader persona:\n{persona_text}\n\n"
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        "Context (plot summaries of previous chapters):\n",
+        f"{prev}\n\n",
+        "Current chapter (English novel text):\n",
+        f"{chapter_text}\n\n",
+        "Task (MANDATORY, persona-driven):\n",
+        "1) Write a short plot summary of THIS chapter (2-4 sentences).\n",
+        "2) Give a score for THIS chapter on a 1.0 to 5.0 scale (allow 1 decimal).\n",
+        "3) Provide a brief comment (2-4 sentences) emphasizing what THIS persona cares about.\n\n",
+        "Return JSON:\n",
+        "{\n",
+        '  "plot_summary": string,\n',
+        '  "score": number (1.0-5.0),\n',
+        '  "comment": string\n',
+        "}\n",
+        "Constraints:\n",
+        "- The comment must be persona-specific (avoid generic critique).\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
-    user += (
-        "Context (plot summaries of previous chapters):\n"
-        f"{prev}\n\n"
-        "Current chapter (English novel text):\n"
-        f"{chapter_text}\n\n"
-        "Task:\n"
-        "1) Write a short plot summary of THIS chapter (2-4 sentences).\n"
-        "2) Give a score for THIS chapter on a 1.0 to 5.0 scale (allow 1 decimal).\n"
-        "3) Provide a brief comment (2-4 sentences) in English.\n\n"
-        "Return JSON:\n"
-        "{\n"
-        '  "plot_summary": string,\n'
-        '  "score": number (1.0-5.0),\n'
-        '  "comment": string\n'
-        "}\n"
-    )
-    return sys_json_only(), user
 
-
-def prompt_incremental_update(meta: Dict[str, Any], chapter_text: str, prev_summary: str, prev_review: str, prev_score: float, persona_text: Optional[str]) -> Tuple[str, str]:
+def prompt_incremental_update(
+    meta: Dict[str, Any],
+    chapter_text: str,
+    prev_summary: str,
+    prev_review: str,
+    prev_score: float,
+    persona_text: Optional[str],
+) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
-    user = f"Novel metadata:\nTitle: {book_name}\nBlurb: {intro}\n\n"
-    if persona_text:
-        user += f"Reader persona:\n{persona_text}\n\n"
+    author = str(meta.get("author", "")).strip()
 
-    user += (
-        "Previous running summary (so far):\n"
-        f"{prev_summary if prev_summary else '(empty)'}\n\n"
-        "Previous review (so far):\n"
-        f"{prev_review if prev_review else '(empty)'}\n\n"
-        f"Previous overall score (1.0-5.0): {prev_score:.1f}\n\n"
-        "Current chapter (English novel text):\n"
-        f"{chapter_text}\n\n"
-        "Task:\n"
-        "- Update the running summary (keep it concise, <= 180 words).\n"
-        "- Update the review (<= 180 words).\n"
-        "- Update the overall score on a 1.0-5.0 scale (allow 1 decimal).\n\n"
-        "Return JSON:\n"
-        "{\n"
-        '  "summary": string,\n'
-        '  "review": string,\n'
-        '  "score": number (1.0-5.0)\n'
-        "}\n"
-    )
-    return sys_json_only(), user
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        "You are reading chapter-by-chapter and updating your opinion as you go.\n\n",
+        "Previous running summary (so far):\n",
+        f"{prev_summary if prev_summary else '(empty)'}\n\n",
+        "Previous review (so far):\n",
+        f"{prev_review if prev_review else '(empty)'}\n\n",
+        f"Previous overall score (1.0-5.0): {prev_score:.1f}\n\n",
+        "Current chapter (English novel text):\n",
+        f"{chapter_text}\n\n",
+        "Task (MANDATORY, persona-driven):\n",
+        "- Update the running summary (concise, <= 180 words).\n",
+        "- Update the review (<= 180 words). The review must sound like THIS persona's evolving feelings.\n",
+        "- Update the overall score on a 1.0-5.0 scale (allow 1 decimal).\n",
+        "- If your score changes, reflect the reason inside the review.\n\n",
+        "Return JSON:\n",
+        "{\n",
+        '  "summary": string,\n',
+        '  "review": string,\n',
+        '  "score": number (1.0-5.0)\n',
+        "}\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
 
-def prompt_summary_incremental(meta: Dict[str, Any], chapter_text: str, global_summary: Dict[str, Any], persona_text: Optional[str]) -> Tuple[str, str]:
+def prompt_summary_incremental(
+    meta: Dict[str, Any],
+    chapter_text: str,
+    global_summary: Dict[str, Any],
+    persona_text: Optional[str],
+) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
-    user = f"Novel metadata:\nTitle: {book_name}\nBlurb: {intro}\n\n"
-    if persona_text:
-        user += f"Reader persona:\n{persona_text}\n\n"
+    author = str(meta.get("author", "")).strip()
 
-    user += (
-        "Current global summary JSON (may be empty):\n"
-        f"{global_summary}\n\n"
-        "New chapter (English novel text):\n"
-        f"{chapter_text}\n\n"
-        "Task: Update the global summary. Keep it compact and consistent.\n"
-        "- plot: <= 220 words total\n"
-        "- characters: <= 220 words total\n"
-        "- style_excerpts: keep up to 3 short excerpts, each <= 30 words\n\n"
-        "Return JSON:\n"
-        "{\n"
-        '  "plot": string,\n'
-        '  "characters": string,\n'
-        '  "style_excerpts": [string, string, ...]\n'
-        "}\n"
-    )
-    return sys_json_only(), user
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        "Current global summary JSON (may be empty):\n",
+        f"{global_summary}\n\n",
+        "New chapter (English novel text):\n",
+        f"{chapter_text}\n\n",
+        "Task: Update the global summary. Keep it compact and consistent.\n",
+        "- plot: <= 220 words total\n",
+        "- characters: <= 220 words total\n",
+        "- style_excerpts: keep up to 3 short excerpts, each <= 30 words\n\n",
+        "Persona constraint (MANDATORY):\n",
+        "- When choosing style_excerpts, pick lines THIS persona would actually notice or quote.\n\n",
+        "Return JSON:\n",
+        "{\n",
+        '  "plot": string,\n',
+        '  "characters": string,\n',
+        '  "style_excerpts": [string, string, ...]\n',
+        "}\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
 
-def prompt_summary_final(meta: Dict[str, Any], global_summary: Dict[str, Any], persona_text: Optional[str], discussion_tail: List[str]) -> Tuple[str, str]:
+def prompt_summary_final(
+    meta: Dict[str, Any],
+    global_summary: Dict[str, Any],
+    persona_text: Optional[str],
+    discussion_tail: List[str],
+) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
+    author = str(meta.get("author", "")).strip()
+
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        "Global summary JSON:\n",
+        f"{global_summary}\n\n",
+        _discussion_block(discussion_tail),
+        "Task (MANDATORY, persona-driven and discussion-aware):\n",
+        "- Write a critique in English (<= 220 words).\n",
+        "- Give an overall score from 1.0 to 5.0 (allow 1 decimal).\n\n",
+        "Return JSON (must include these fields; you may include extra fields):\n",
+        "{\n",
+        '  "critique": string,\n',
+        '  "score": number (1.0-5.0)\n',
+        "}\n",
+        "Strong requirements:\n",
+        "- The critique must sound like THIS persona (not generic).\n",
+        "- Integrate 2-4 discussion takeaways inside the critique.\n",
+        "- If the discussion is one-sided, include at least one thoughtful counterpoint.\n",
+        "- Your score must be reconsidered after discussion: change it OR justify resistance in the critique.\n",
+    ]
+    return sys_json_only(), "".join(parts)
+
+
+def prompt_discussion_message(
+    meta: Dict[str, Any],
+    persona_text: Optional[str],
+    agent_stance: str,
+    discussion_tail: List[str],
+) -> Tuple[str, str]:
+    book_name = meta["book_name"]
+    intro = meta["intro"]
+    author = str(meta.get("author", "")).strip()
     disc = "\n".join([f"- {m}" for m in discussion_tail]) if discussion_tail else "(none)"
 
-    user = (
-        f"Novel metadata:\nTitle: {book_name}\nBlurb: {intro}\n\n"
-        f"Global summary JSON:\n{global_summary}\n\n"
-        "Optional group discussion (latest messages):\n"
-        f"{disc}\n\n"
-        "Task:\n"
-        "- Write a critique in English (<= 220 words).\n"
-        "- Give an overall score from 1.0 to 5.0 (allow 1 decimal).\n\n"
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        "Your current stance (your own view so far):\n",
+        f"{agent_stance}\n\n",
+        "Latest group discussion messages:\n",
+        f"{disc}\n\n",
+        "Task: Write ONE short message to the group (1-3 sentences), in English.\n\n",
+        "Discussion behavior rules (MANDATORY):\n",
+        "- Do NOT just echo the crowd.\n",
+        "- If the discussion looks one-sided, you MUST add a counterpoint or missing nuance.\n",
+        "- Even if you agree, add a caveat, limitation, or alternative angle.\n",
+        "- Your message must reflect THIS persona's priorities.\n\n",
+        "Return JSON:\n",
+        "{\n",
+        '  "message": string\n',
+        "}\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
-        "Return JSON:\n"
-        "{\n"
-        '  "critique": string,\n'
-        '  "score": number (1.0-5.0)\n'
-        "}\n"
-    )
-    if persona_text:
-        user += "\nNote: The critique should be consistent with the persona's tastes."
-    return sys_json_only(), user
 
-
-def prompt_discussion_message(meta: Dict[str, Any], persona_text: Optional[str], agent_stance: str, discussion_tail: List[str]) -> Tuple[str, str]:
+def prompt_finalize_after_discussion(
+    meta: Dict[str, Any],
+    persona_text: Optional[str],
+    pre_score: float,
+    discussion_tail: List[str],
+) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
-    disc = "\n".join([f"- {m}" for m in discussion_tail]) if discussion_tail else "(none)"
+    author = str(meta.get("author", "")).strip()
 
-    user = (
-        f"Novel metadata:\nTitle: {book_name}\nBlurb: {intro}\n\n"
-        f"Your current stance:\n{agent_stance}\n\n"
-        "Latest group discussion messages:\n"
-        f"{disc}\n\n"
-        "Task: Write ONE short message to the group (1-3 sentences), in English.\n"
-        "Return JSON:\n"
-        "{\n"
-        '  "message": string\n'
-        "}\n"
-    )
-    if persona_text:
-        user += "\nStay in-character with the persona."
-    return sys_json_only(), user
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        f"Your pre-discussion overall score (1.0-5.0): {pre_score:.1f}\n\n",
+        _discussion_block(discussion_tail),
+        "Task (MANDATORY):\n",
+        "- Decide your final overall score (1.0-5.0, allow 1 decimal).\n",
+        "- Provide a final short review (<= 180 words) in English.\n\n",
+        "Scoring rules (MANDATORY):\n",
+        "- You MUST reconsider the score after discussion: either change it, OR explicitly justify why you keep it.\n",
+        "- If discussion is one-sided, include at least one thoughtful counterpoint in your final review.\n\n",
+        "Return JSON (must include these fields; you may include extra fields):\n",
+        "{\n",
+        '  "final_score": number (1.0-5.0),\n',
+        '  "final_review": string\n',
+        "}\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
-
-def prompt_finalize_after_discussion(meta: Dict[str, Any], persona_text: Optional[str], pre_score: float, discussion_tail: List[str]) -> Tuple[str, str]:
-    book_name = meta["book_name"]
-    intro = meta["intro"]
-    disc = "\n".join([f"- {m}" for m in discussion_tail]) if discussion_tail else "(none)"
-
-    user = (
-        f"Novel metadata:\nTitle: {book_name}\nBlurb: {intro}\n\n"
-        f"Your pre-discussion overall score (1.0-5.0): {pre_score:.1f}\n\n"
-        "Latest group discussion messages:\n"
-        f"{disc}\n\n"
-        "Task:\n"
-        "- Decide your final overall score (1.0-5.0, allow 1 decimal).\n"
-        "- Provide a final short review (<= 180 words) in English.\n\n"
-        "Return JSON:\n"
-        "{\n"
-        '  "final_score": number (1.0-5.0),\n'
-        '  "final_review": string\n'
-        "}\n"
-    )
-    if persona_text:
-        user += "\nStay consistent with the persona."
-    return sys_json_only(), user
 
 
 # =========================
