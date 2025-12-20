@@ -10,6 +10,8 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from .trace_logger import setup_logger
+
 import httpx
 from openai import OpenAI
 import random
@@ -28,14 +30,14 @@ def write_json(path: str, obj: Any) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
-
-def list_book_dirs(books_root: str) -> List[str]:
-    out = []
-    for name in os.listdir(books_root):
-        p = os.path.join(books_root, name)
-        if os.path.isdir(p):
-            out.append(p)
-    return sorted(out)
+# abandoned
+# def list_book_dirs(books_root: str) -> List[str]:
+#     out = []
+#     for name in os.listdir(books_root):
+#         p = os.path.join(books_root, name)
+#         if os.path.isdir(p):
+#             out.append(p)
+#     return sorted(out)
 
 
 # =========================
@@ -58,37 +60,6 @@ def extract_json_object(text: str) -> Dict[str, Any]:
 
 def clamp_score(x: float, lo: float = 1.0, hi: float = 5.0) -> float:
     return max(lo, min(hi, x))
-
-
-# =========================
-#  Logger：控制台摘要 + 文件摘要
-# =========================
-def setup_logger(log_dir: str, also_file: bool = True) -> logging.Logger:
-    os.makedirs(log_dir, exist_ok=True)
-    logger = logging.getLogger("llm_trace")
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-
-    # 避免 PyCharm 反复运行重复加 handler
-    if logger.handlers:
-        return logger
-
-    fmt = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    sh = logging.StreamHandler()
-    sh.setFormatter(fmt)
-    logger.addHandler(sh)
-
-    if also_file:
-        path = os.path.join(log_dir, f"run_summary_{time.strftime('%Y%m%d_%H%M%S')}.log")
-        fh = logging.FileHandler(path, encoding="utf-8")
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-
-    return logger
 
 
 def _short_uid(uid: str, n: int = 8) -> str:
@@ -426,11 +397,13 @@ def sys_json_only() -> str:
 def prompt_interest_filter(meta: Dict[str, Any], persona_text: Optional[str]) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
+    author = str(meta.get("author", "")).strip()
 
     user = (
         f"Book metadata:\n"
         f"- Title: {book_name}\n"
         f"- Blurb: {intro}\n\n"
+        + (f"- Author: {author}\n" if author else "")
     )
     if persona_text:
         user += f"Reader persona:\n{persona_text}\n\n"
@@ -848,41 +821,95 @@ def _safe_cfg_dump(cfg: Any) -> Dict[str, Any]:
 # =========================
 #  主流程：run_all_books / run_one_book
 # =========================
-def run_all_books(cfg: Any, _unused_llm: Any = None) -> None:
+# abandoned:
+# def run_all_books(cfg: Any, _unused_llm: Any = None) -> None:
+#     """
+#     兼容 main.py 原来的 run_all_books(cfg, llm) 调用：
+#     runner 内部自己创建 thread-local llm（确保多线程安全 + 全量 JSONL 日志）
+#     """
+#     output_root = str(cfg.paths.output_root)
+#     os.makedirs(output_root, exist_ok=True)
+#
+#     log_dir = os.path.join(output_root, "logs")
+#     logger = setup_logger(log_dir, also_file=True)
+#
+#     api_key = _get_api_key_from_env(cfg)
+#     llm = ThreadLocalLLM(
+#         base_url=str(cfg.llm.base_url),
+#         api_key=api_key,
+#         model=str(cfg.llm.model),
+#         timeout_sec=int(cfg.llm.timeout_sec),
+#         logger=logger,
+#     )
+#
+#     personas_raw = read_json(str(cfg.paths.personas_json))
+#     n_agents = _get_int(cfg, "experiment.n_agents", 8)
+#     personas_raw = personas_raw[:n_agents]
+#
+#     books_root = str(cfg.paths.books_root)
+#     book_dirs = list_book_dirs(books_root)
+#
+#     logger.info("=== RUN START === books=%d | n_agents=%d | method=%s", len(book_dirs), n_agents, str(cfg.experiment.method))
+#
+#     for book_dir in book_dirs:
+#         meta = read_json(os.path.join(book_dir, "book_metadata.json"))
+#         chapters = read_json(os.path.join(book_dir, "chapters.json"))
+#         run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
+#
+#     logger.info("=== RUN END ===")
+
+def _normalize_book_record(book_record: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
-    兼容 main.py 原来的 run_all_books(cfg, llm) 调用：
-    runner 内部自己创建 thread-local llm（确保多线程安全 + 全量 JSONL 日志）
+    把你现在的输入格式：
+    {
+      "chapter": [{"id":1,"title":"Chapter 1","text":"..."}, ...],
+      "metadata": {"title": "...", "author":"...", "intro":"...", ...}
+    }
+    适配成 runner 内部使用的：
+    meta: {"book_name": ..., "intro": ..., "author": ...}
+    chapters: [{"Number": 1, "title": "...", "text": "..."}, ...]
     """
-    output_root = str(cfg.paths.output_root)
-    os.makedirs(output_root, exist_ok=True)
+    md = book_record.get("metadata", {}) or {}
+    chs = book_record.get("chapter", []) or []
 
-    log_dir = os.path.join(output_root, "logs")
-    logger = setup_logger(log_dir, also_file=True)
+    title = str(md.get("title", "UNKNOWN")).strip()
+    intro = str(md.get("intro", "")).strip()
+    author = str(md.get("author", "")).strip()
 
-    api_key = _get_api_key_from_env(cfg)
-    llm = ThreadLocalLLM(
-        base_url=str(cfg.llm.base_url),
-        api_key=api_key,
-        model=str(cfg.llm.model),
-        timeout_sec=int(cfg.llm.timeout_sec),
-        logger=logger,
-    )
+    # 注意：goodreads_rating / ratings_count 不要喂给模型（防止泄漏真实分数）
+    meta = {
+        "book_name": title,
+        "intro": intro,
+        "author": author,
+    }
 
-    personas_raw = read_json(str(cfg.paths.personas_json))
-    n_agents = _get_int(cfg, "experiment.n_agents", 8)
-    personas_raw = personas_raw[:n_agents]
+    # 章节按 id 排序，映射到旧字段 Number/text
+    chapters = []
+    for c in sorted(chs, key=lambda x: int(x.get("id", 0) or 0)):
+        chapters.append({
+            "Number": int(c.get("id", 0) or 0),
+            "title": str(c.get("title", "")).strip(),
+            "text": str(c.get("text", "")),
+        })
 
-    books_root = str(cfg.paths.books_root)
-    book_dirs = list_book_dirs(books_root)
+    return meta, chapters
 
-    logger.info("=== RUN START === books=%d | n_agents=%d | method=%s", len(book_dirs), n_agents, str(cfg.experiment.method))
 
-    for book_dir in book_dirs:
-        meta = read_json(os.path.join(book_dir, "book_metadata.json"))
-        chapters = read_json(os.path.join(book_dir, "chapters.json"))
-        run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
-
-    logger.info("=== RUN END ===")
+def evaluate_single_book(
+    cfg: Any,
+    llm: ThreadLocalLLM,
+    logger: logging.Logger,
+    book_record: Dict[str, Any],
+    personas_raw: List[Dict[str, Any]],
+) -> None:
+    """
+    runner 评测“单本书”
+    - book_record: 你的新结构（含 metadata + chapter）
+    - personas_raw: persona 列表
+    输出仍然落在 cfg.paths.output_root 下（原始 json + logs/jsonl）
+    """
+    meta, chapters = _normalize_book_record(book_record)
+    run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
 
 
 def run_one_book(

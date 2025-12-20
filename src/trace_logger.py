@@ -6,17 +6,13 @@ import logging
 from typing import Any, Dict, Optional
 
 
-def setup_logger(log_dir: str, also_file: bool = True) -> logging.Logger:
-    """
-    统一 logger：多线程安全；控制台 +（可选）文件。
-    """
+def setup_logger(log_dir: str, also_file: bool = True, logger_name: str = "llm_trace") -> logging.Logger:
     os.makedirs(log_dir, exist_ok=True)
-
-    logger = logging.getLogger("llm_trace")
+    logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
-    # 避免重复添加 handler（PyCharm 反复运行时常见）
+    # 避免重复加 handler
     if logger.handlers:
         return logger
 
@@ -30,7 +26,7 @@ def setup_logger(log_dir: str, also_file: bool = True) -> logging.Logger:
     logger.addHandler(sh)
 
     if also_file:
-        path = os.path.join(log_dir, f"llm_trace_{time.strftime('%Y%m%d_%H%M%S')}.log")
+        path = os.path.join(log_dir, f"run_summary_{time.strftime('%Y%m%d_%H%M%S')}.log")
         fh = logging.FileHandler(path, encoding="utf-8")
         fh.setFormatter(fmt)
         logger.addHandler(fh)
