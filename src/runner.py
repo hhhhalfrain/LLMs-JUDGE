@@ -70,6 +70,7 @@ def _truncate(s: str, n: int = 260) -> str:
 # =========================
 class ProgressTracker:
     """按 stage 统计：total / done，用于控制台显示“该阶段还剩多少任务”"""
+
     def __init__(self):
         self._lock = threading.Lock()
         self._totals: Dict[str, int] = {}
@@ -162,9 +163,20 @@ def log_llm_summary_console(
     logger.info(
         "[%s] book=%s | agent=%s | method=%s | stage=%s | ch=%s | "
         "stage_progress=%s/%s (rem %s) | %.2fs | in_chars=%d out_chars=%d | parsed_keys=%s%s",
-        ok, book, agent, method, stage, str(chapter),
-        str(done) if done is not None else "-", str(total) if total is not None else "-", str(rem) if rem is not None else "-",
-        elapsed_s, user_len, assistant_len, keys, err_part
+        ok,
+        book,
+        agent,
+        method,
+        stage,
+        str(chapter),
+        str(done) if done is not None else "-",
+        str(total) if total is not None else "-",
+        str(rem) if rem is not None else "-",
+        elapsed_s,
+        user_len,
+        assistant_len,
+        keys,
+        err_part,
     )
 
 
@@ -178,6 +190,7 @@ class AdaptiveConcurrencyController:
     - 若平均耗时 >= latency_threshold 或 错误率 >= error_threshold，则把并发砍半
     - 若平均耗时较低且错误率很低，则缓慢提升并发
     """
+
     def __init__(
         self,
         min_workers: int = 1,
@@ -241,6 +254,7 @@ class ThreadLocalLLM:
     - 内置网络重试：指数退避 + jitter；对 429/5xx/超时/断连等重试
     - 可选挂载 AdaptiveConcurrencyController，用于阶段内动态调节并发
     """
+
     def __init__(
         self,
         base_url: str,
@@ -301,7 +315,16 @@ class ThreadLocalLLM:
         return None
 
     def _should_retry(self, err: Exception) -> bool:
-        if isinstance(err, (httpx.TimeoutException, httpx.NetworkError, httpx.TransportError, httpx.ReadError, httpx.ConnectError)):
+        if isinstance(
+            err,
+            (
+                httpx.TimeoutException,
+                httpx.NetworkError,
+                httpx.TransportError,
+                httpx.ReadError,
+                httpx.ConnectError,
+            ),
+        ):
             return True
 
         sc = self._get_status_code(err)
@@ -310,13 +333,21 @@ class ThreadLocalLLM:
 
         msg = (str(err) or "").lower()
         transient_keywords = [
-            "timed out", "timeout", "connection reset", "connection aborted", "temporary failure",
-            "remote protocol", "server disconnected", "read error", "connect error", "tls",
+            "timed out",
+            "timeout",
+            "connection reset",
+            "connection aborted",
+            "temporary failure",
+            "remote protocol",
+            "server disconnected",
+            "read error",
+            "connect error",
+            "tls",
         ]
         return any(k in msg for k in transient_keywords)
 
     def _sleep_backoff(self, attempt_index: int) -> float:
-        base = self.retry_base_sleep_sec * (2 ** attempt_index)
+        base = self.retry_base_sleep_sec * (2**attempt_index)
         base = min(base, self.retry_max_sleep_sec)
         if self.retry_jitter > 0:
             base *= (1.0 + random.uniform(-self.retry_jitter, self.retry_jitter))
@@ -391,23 +422,25 @@ class ThreadLocalLLM:
 
                 # JSONL 记录完整信息
                 if self.writer:
-                    self.writer.write({
-                        "trace": trace,
-                        "elapsed_s": round(dt, 6),
-                        "attempt": attempt + 1,
-                        "max_attempts": max_attempts,
-                        "system": system,
-                        "user": user,
-                        "assistant_raw": assistant_raw,
-                        "assistant_parsed": parsed,
-                    })
+                    self.writer.write(
+                        {
+                            "trace": trace,
+                            "elapsed_s": round(dt, 6),
+                            "attempt": attempt + 1,
+                            "max_attempts": max_attempts,
+                            "system": system,
+                            "user": user,
+                            "assistant_raw": assistant_raw,
+                            "assistant_parsed": parsed,
+                        }
+                    )
 
                 return assistant_raw, parsed
 
             except Exception as e:
                 dt = time.perf_counter() - t0
                 last_err = e
-                is_last = (attempt == max_attempts - 1)
+                is_last = attempt == max_attempts - 1
 
                 # 自适应监控：记录一次失败调用
                 if self.monitor is not None:
@@ -415,20 +448,22 @@ class ThreadLocalLLM:
 
                 # 失败也要写 JSONL（完整信息 + 堆栈）
                 if self.writer:
-                    self.writer.write({
-                        "trace": trace,
-                        "elapsed_s": round(dt, 6),
-                        "attempt": attempt + 1,
-                        "max_attempts": max_attempts,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "error_status_code": self._get_status_code(e),
-                        "traceback": traceback.format_exc(),
-                        "system": system,
-                        "user": user,
-                        "assistant_raw": assistant_raw,
-                        "assistant_parsed": parsed,
-                    })
+                    self.writer.write(
+                        {
+                            "trace": trace,
+                            "elapsed_s": round(dt, 6),
+                            "attempt": attempt + 1,
+                            "max_attempts": max_attempts,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "error_status_code": self._get_status_code(e),
+                            "traceback": traceback.format_exc(),
+                            "system": system,
+                            "user": user,
+                            "assistant_raw": assistant_raw,
+                            "assistant_parsed": parsed,
+                        }
+                    )
 
                 # 控制台摘要行（错误）
                 log_llm_summary_console(
@@ -451,7 +486,7 @@ class ThreadLocalLLM:
                         self.tracker.tick(stage)
 
                     if self.fail_fast:
-                        raise RuntimeError(f"LLM 调用失败（已重试 {attempt+1}/{max_attempts} 次）：{e}") from e
+                        raise RuntimeError(f"LLM 调用失败（已重试 {attempt + 1}/{max_attempts} 次）：{e}") from e
                     return "", None
 
                 sleep_s = self._sleep_backoff(attempt)
@@ -485,31 +520,28 @@ def sys_json_only() -> str:
 def _persona_block(persona_text: Optional[str]) -> str:
     if not persona_text:
         return ""
-    return "".join([
-        "READER PERSONA (this is YOU — stay in-character):\n",
-        f"{persona_text}\n\n",
-        "Persona grounding rules (MANDATORY):\n",
-        "- Treat the persona as your identity, values, and taste filter.\n",
-        "- Your judgments MUST reflect what this persona would notice, enjoy, dislike, or be sensitive to.\n",
-        "- Do NOT become a generic critic. Avoid neutral, academic voice unless the persona would do that.\n",
-        "- If uncertain, make the smallest plausible inference consistent with the persona.\n\n",
-    ])
+    return "".join(
+        [
+            "READER PERSONA (this is YOU — stay in-character):\n",
+            f"{persona_text}\n\n",
+            "Persona grounding (MANDATORY):\n",
+            "- Treat the persona as your identity + taste filter.\n",
+            "- Speak with this persona's voice (not generic/academic).\n\n",
+        ]
+    )
 
 
 def _discussion_block(discussion_tail: List[str]) -> str:
     disc = "\n".join([f"- {m}" for m in discussion_tail]) if discussion_tail else "(none)"
-    return "".join([
-        "GROUP DISCUSSION (latest messages):\n",
-        f"{disc}\n\n",
-        "Discussion integration rules (MANDATORY):\n",
-        "- You MUST carefully read and integrate the discussion.\n",
-        "- Extract 2-4 concrete takeaways (arguments, observations, criticisms, or praise).\n",
-        "- Your score MUST be reconsidered after discussion:\n",
-        "  * Either change the score, OR clearly justify why you keep the same score despite the discussion.\n",
-        "- Avoid herd behavior: if the discussion seems one-sided, you MUST introduce at least one thoughtful counterpoint\n",
-        "  (minority view, missing nuance, alternative interpretation, or a caveat).\n",
-        "- When you mention discussion, refer to specific points (paraphrase). Do not hand-wave.\n\n",
-    ])
+    return "".join(
+        [
+            "GROUP CHAT LOG (latest messages):\n",
+            f"{disc}\n\n",
+            "Discussion rules (MANDATORY):\n",
+            "- Read the chat log and react to specific points (paraphrase).\n",
+            "- Keep the chat clean: respectful, no personal attacks, no slurs, no spam.\n\n",
+        ]
+    )
 
 
 def prompt_interest_filter(meta: Dict[str, Any], persona_text: Optional[str]) -> Tuple[str, str]:
@@ -523,16 +555,14 @@ def prompt_interest_filter(meta: Dict[str, Any], persona_text: Optional[str]) ->
         (f"- Author: {author}\n" if author else ""),
         f"- Blurb: {intro}\n\n",
         _persona_block(persona_text),
-        "Task: Decide whether YOU (as this persona) would be interested enough to start reading this novel.\n",
-        "Be strict: if it does not fit your persona's tastes, values, emotional bandwidth, or genre tolerance, reject it.\n\n",
-        "Return JSON with fields:\n",
+        "Task: Would YOU (as this persona) start reading this novel?\n",
+        "Return JSON:\n",
         "{\n",
         '  "keep": boolean,\n',
         '  "interest_score": number (0-100),\n',
         '  "reason": string\n',
         "}\n",
-        "Constraints:\n",
-        "- The reason MUST explicitly connect to persona traits/preferences (not generic).\n",
+        "Note: The reason should clearly connect to persona preferences.\n",
     ]
     return sys_json_only(), "".join(parts)
 
@@ -554,22 +584,20 @@ def prompt_aggregation_chapter(
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
-        "Context (plot summaries of previous chapters):\n",
+        "Context (previous plot summaries):\n",
         f"{prev}\n\n",
         "Current chapter (English novel text):\n",
         f"{chapter_text}\n\n",
-        "Task (MANDATORY, persona-driven):\n",
-        "1) Write a short plot summary of THIS chapter (2-4 sentences).\n",
-        "2) Give a score for THIS chapter on a 1.0 to 5.0 scale (allow 1 decimal).\n",
-        "3) Provide a brief comment (2-4 sentences) emphasizing what THIS persona cares about.\n\n",
+        "Task:\n",
+        "- Plot summary of THIS chapter (2-4 sentences).\n",
+        "- Score THIS chapter (1.0-5.0, 1 decimal).\n",
+        "- Short comment in THIS persona's voice (2-4 sentences).\n\n",
         "Return JSON:\n",
         "{\n",
         '  "plot_summary": string,\n',
         '  "score": number (1.0-5.0),\n',
         '  "comment": string\n',
         "}\n",
-        "Constraints:\n",
-        "- The comment must be persona-specific (avoid generic critique).\n",
     ]
     return sys_json_only(), "".join(parts)
 
@@ -592,19 +620,18 @@ def prompt_incremental_update(
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
-        "You are reading chapter-by-chapter and updating your opinion as you go.\n\n",
-        "Previous running summary (so far):\n",
+        "You update your opinion chapter-by-chapter.\n\n",
+        "Previous running summary:\n",
         f"{prev_summary if prev_summary else '(empty)'}\n\n",
-        "Previous review (so far):\n",
+        "Previous review:\n",
         f"{prev_review if prev_review else '(empty)'}\n\n",
         f"Previous overall score (1.0-5.0): {prev_score:.1f}\n\n",
-        "Current chapter (English novel text):\n",
+        "Current chapter text:\n",
         f"{chapter_text}\n\n",
-        "Task (MANDATORY, persona-driven):\n",
-        "- Update the running summary (concise, <= 180 words).\n",
-        "- Update the review (<= 180 words). The review must sound like THIS persona's evolving feelings.\n",
-        "- Update the overall score on a 1.0-5.0 scale (allow 1 decimal).\n",
-        "- If your score changes, reflect the reason inside the review.\n\n",
+        "Task:\n",
+        "- Update summary (<= 180 words).\n",
+        "- Update review (<= 180 words) in persona voice.\n",
+        "- Update score (1.0-5.0, 1 decimal).\n\n",
         "Return JSON:\n",
         "{\n",
         '  "summary": string,\n',
@@ -631,22 +658,18 @@ def prompt_summary_incremental(
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
-        "Current global summary JSON (may be empty):\n",
+        "Current global summary JSON:\n",
         f"{global_summary}\n\n",
-        "New chapter (English novel text):\n",
+        "New chapter text:\n",
         f"{chapter_text}\n\n",
-        "Task: Update the global summary. Keep it compact and consistent.\n",
-        "- plot: <= 220 words total\n",
-        "- characters: <= 220 words total\n",
-        "- style_excerpts: keep up to 3 short excerpts, each <= 30 words\n\n",
-        "Persona constraint (MANDATORY):\n",
-        "- When choosing style_excerpts, pick lines THIS persona would actually notice or quote.\n\n",
+        "Task: Update global summary, compact and consistent.\n\n",
         "Return JSON:\n",
         "{\n",
         '  "plot": string,\n',
         '  "characters": string,\n',
         '  "style_excerpts": [string, string, ...]\n',
         "}\n",
+        "Persona note: choose style_excerpts this persona would quote.\n",
     ]
     return sys_json_only(), "".join(parts)
 
@@ -655,6 +678,8 @@ def prompt_summary_final(
     meta: Dict[str, Any],
     global_summary: Dict[str, Any],
     persona_text: Optional[str],
+    username: str,
+    current_score: float,
     discussion_tail: List[str],
 ) -> Tuple[str, str]:
     book_name = meta["book_name"]
@@ -667,22 +692,19 @@ def prompt_summary_final(
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
+        f"Your chat username: {username}\n",
+        f"Your current score (after discussion rounds): {current_score:.1f}\n\n",
         "Global summary JSON:\n",
         f"{global_summary}\n\n",
         _discussion_block(discussion_tail),
-        "Task (MANDATORY, persona-driven and discussion-aware):\n",
-        "- Write a critique in English (<= 220 words).\n",
-        "- Give an overall score from 1.0 to 5.0 (allow 1 decimal).\n\n",
-        "Return JSON (must include these fields; you may include extra fields):\n",
+        "Task:\n",
+        "- Write a critique in English (<= 220 words) in THIS persona's voice.\n",
+        "- Give an overall score (1.0-5.0, 1 decimal).\n\n",
+        "Return JSON:\n",
         "{\n",
         '  "critique": string,\n',
         '  "score": number (1.0-5.0)\n',
         "}\n",
-        "Strong requirements:\n",
-        "- The critique must sound like THIS persona (not generic).\n",
-        "- Integrate 2-4 discussion takeaways inside the critique.\n",
-        "- If the discussion is one-sided, include at least one thoughtful counterpoint.\n",
-        "- Your score must be reconsidered after discussion: change it OR justify resistance in the critique.\n",
     ]
     return sys_json_only(), "".join(parts)
 
@@ -690,9 +712,18 @@ def prompt_summary_final(
 def prompt_discussion_message(
     meta: Dict[str, Any],
     persona_text: Optional[str],
+    username: str,
     agent_stance: str,
+    current_score: float,
     discussion_tail: List[str],
 ) -> Tuple[str, str]:
+    """
+    讨论轮输出（对模型强约束，但不做代码强制校验）：
+    - 本轮建议更新评分（尽量不要保持不变）
+    - 建议单轮调整幅度在 [-0.3, +0.3]（允许 +0.1 / -0.2 等）
+    - 若讨论明显一边倒：尽可能提出一个合理的不同意见/反例/担忧点（强烈建议，不强制）
+    - JSON 不再输出 delta，只输出当前 score
+    """
     book_name = meta["book_name"]
     intro = meta["intro"]
     author = str(meta.get("author", "")).strip()
@@ -704,27 +735,38 @@ def prompt_discussion_message(
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
-        "Your current stance (your own view so far):\n",
+        f"Your chat username: {username}\n",
+        f"Your current score (before this round): {current_score:.1f}\n\n",
+        "Your current stance (your view so far):\n",
         f"{agent_stance}\n\n",
-        "Latest group discussion messages:\n",
+        "Latest group chat messages:\n",
         f"{disc}\n\n",
-        "Task: Write ONE short message to the group (1-3 sentences), in English.\n\n",
-        "Discussion behavior rules (MANDATORY):\n",
-        "- Do NOT just echo the crowd.\n",
-        "- If the discussion looks one-sided, you MUST add a counterpoint or missing nuance.\n",
-        "- Even if you agree, add a caveat, limitation, or alternative angle.\n",
-        "- Your message must reflect THIS persona's priorities.\n\n",
+        _counterpoint_block(),
+        "Scoring update guidance:\n",
+        "- You SHOULD update your score this round (try not to keep it unchanged).\n",
+        "- Recommended per-round change range: from -0.3 to +0.3.\n",
+        "- Use one decimal for the score (e.g., 4.6).\n",
+        "- Keep score within [1.0, 5.0].\n\n",
+        "Task:\n",
+        "- Write ONE short chat message (1-3 sentences), clean and respectful.\n",
+        f"- The message MUST start with your name like: [{username}] ...\n",
+        "- Mention your updated score in the message.\n",
+        "- React to at least one specific point from the chat log.\n",
+        "- If the chat is one-sided, try to add one thoughtful counterpoint.\n\n",
         "Return JSON:\n",
         "{\n",
-        '  "message": string\n',
+        '  "message": string,\n',
+        '  "score": number\n',
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
 
 
+
 def prompt_finalize_after_discussion(
     meta: Dict[str, Any],
     persona_text: Optional[str],
+    username: str,
     pre_score: float,
     discussion_tail: List[str],
 ) -> Tuple[str, str]:
@@ -738,21 +780,20 @@ def prompt_finalize_after_discussion(
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
-        f"Your pre-discussion overall score (1.0-5.0): {pre_score:.1f}\n\n",
+        f"Your chat username: {username}\n",
+        f"Your current score (after discussion rounds): {pre_score:.1f}\n\n",
         _discussion_block(discussion_tail),
-        "Task (MANDATORY):\n",
-        "- Decide your final overall score (1.0-5.0, allow 1 decimal).\n",
-        "- Provide a final short review (<= 180 words) in English.\n\n",
-        "Scoring rules (MANDATORY):\n",
-        "- You MUST reconsider the score after discussion: either change it, OR explicitly justify why you keep it.\n",
-        "- If discussion is one-sided, include at least one thoughtful counterpoint in your final review.\n\n",
-        "Return JSON (must include these fields; you may include extra fields):\n",
+        "Task:\n",
+        "- Decide your final overall score (1.0-5.0, 1 decimal).\n",
+        "- Write a final short review (<= 180 words) in English, persona voice, referencing discussion points.\n\n",
+        "Return JSON:\n",
         "{\n",
         '  "final_score": number (1.0-5.0),\n',
         '  "final_review": string\n',
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
+
 
 
 # =========================
@@ -850,9 +891,7 @@ def run_incremental_agent(
         chapter_idx = int(ch["Number"])
         chapter_text = str(ch["text"])
 
-        system, user = prompt_incremental_update(
-            meta, chapter_text, prev_summary, prev_review, float(prev_score), persona_text
-        )
+        system, user = prompt_incremental_update(meta, chapter_text, prev_summary, prev_review, float(prev_score), persona_text)
         _, parsed = llm.chat_json(
             system=system,
             user=user,
@@ -942,6 +981,18 @@ def build_summary_agent(
         }
 
     return global_summary
+
+def _counterpoint_block() -> str:
+    return "".join(
+        [
+            "Counterpoint rule (STRONGLY RECOMMENDED):\n",
+            "- If the group chat is one-sided (everyone agrees in the same direction, no real pushback),\n",
+            "  try to contribute at least ONE thoughtful counterpoint or alternative interpretation.\n",
+            "- Do NOT be contrarian just to be contrarian. Keep it plausible, text-grounded, and respectful.\n",
+            "- You may disagree partially (e.g., agree on pacing but question character motivation).\n\n",
+        ]
+    )
+
 
 
 # =========================
@@ -1086,12 +1137,7 @@ def _get_base_eval_root(cfg: Any) -> Optional[str]:
     return str(root) if root else None
 
 
-def _base_eval_cache_path(
-    cfg: Any,
-    method: str,
-    book_name: str,
-    persona_key: str,
-) -> Optional[str]:
+def _base_eval_cache_path(cfg: Any, method: str, book_name: str, persona_key: str) -> Optional[str]:
     root = _get_base_eval_root(cfg)
     if not root:
         return None
@@ -1099,12 +1145,7 @@ def _base_eval_cache_path(
     return os.path.join(root, method, fname)
 
 
-def _load_base_eval_from_disk(
-    cfg: Any,
-    method: str,
-    book_name: str,
-    persona_key: str,
-) -> Optional[Dict[str, Any]]:
+def _load_base_eval_from_disk(cfg: Any, method: str, book_name: str, persona_key: str) -> Optional[Dict[str, Any]]:
     path = _base_eval_cache_path(cfg, method, book_name, persona_key)
     if not path or not os.path.exists(path):
         return None
@@ -1238,6 +1279,9 @@ def evaluate_single_book(
     run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
 
 
+# =========================
+#  主流程：单本书
+# =========================
 def run_one_book(
     cfg: Any,
     llm: ThreadLocalLLM,
@@ -1256,6 +1300,9 @@ def run_one_book(
     - 输出：只写原始数据（per-agent 基线 + interest + 讨论 + final_score），不再在这里计算 book_level 的 aggregate score。
     """
 
+    # >>> 你的修改要求：max_workers > 4 强制固定为 4
+    HARD_MAX_WORKERS = 4
+
     method = str(cfg.experiment.method)
     use_persona = _get_bool(cfg, "experiment.use_persona", True)
     use_discussion = _get_bool(cfg, "experiment.use_discussion", False)
@@ -1263,14 +1310,21 @@ def run_one_book(
 
     n_agents = len(personas_raw)
     max_workers_cfg = _get_int(cfg, "concurrency.max_workers", min(8, n_agents))
+    if max_workers_cfg > HARD_MAX_WORKERS:
+        max_workers_cfg = HARD_MAX_WORKERS
+
     rounds = _get_int(cfg, "experiment.discussion_rounds", 2)
     window = _get_int(cfg, "experiment.discussion_window", 10)
     score_decimals = _get_int(cfg, "experiment.score_decimals", 1)
 
     book_name = str(meta.get("book_name", "UNKNOWN"))
     logger.info(
-        ">>> BOOK START: %s | method=%s | agents=%d | max_workers_cfg=%d",
-        book_name, method, n_agents, max_workers_cfg
+        ">>> BOOK START: %s | method=%s | agents=%d | max_workers_cfg=%d (hard_cap=%d)",
+        book_name,
+        method,
+        n_agents,
+        max_workers_cfg,
+        HARD_MAX_WORKERS,
     )
 
     # 每本书一个 tracker + JSONL（完整对话日志）
@@ -1303,11 +1357,14 @@ def run_one_book(
             workers = monitor.suggest_workers(default_workers)
         else:
             workers = default_workers
-        workers = max(1, min(workers, n_eval_agents))
+        workers = max(1, min(workers, n_eval_agents, HARD_MAX_WORKERS))
 
         logger.info(
             "STAGE START: base_eval | method=%s | eval_agents=%d | chapters=%d | workers=%d",
-            method, n_eval_agents, n_chapters, workers
+            method,
+            n_eval_agents,
+            n_chapters,
+            workers,
         )
 
         def persona_cache_key(p: Dict[str, Any]) -> str:
@@ -1399,7 +1456,7 @@ def run_one_book(
             workers = monitor.suggest_workers(default_workers)
         else:
             workers = default_workers
-        workers = max(1, min(workers, n_agents))
+        workers = max(1, min(workers, n_agents, HARD_MAX_WORKERS))
 
         def _interest_worker(persona_raw: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
             uid = str(persona_raw.get("uuid"))
@@ -1433,47 +1490,87 @@ def run_one_book(
     else:
         for p in personas_raw:
             uid = str(p.get("uuid"))
-            decisions[uid] = {
-                "keep": True,
-                "interest_score": 50.0,
-                "reason": "interest_filter_disabled",
-            }
+            decisions[uid] = {"keep": True, "interest_score": 50.0, "reason": "interest_filter_disabled"}
 
     kept_personas = [p for p in personas_raw if bool(decisions.get(str(p.get("uuid")), {}).get("keep", True))]
     filtered_pre = len(personas_raw) - len(kept_personas)
     logger.info(
         "STAGE DONE: interest_filter | kept=%d/%d | filtered_pre_read=%d",
-        len(kept_personas), n_agents, filtered_pre
+        len(kept_personas),
+        n_agents,
+        filtered_pre,
     )
 
     # -----------------------------------------------------
-    # STEP C: 讨论（原 STAGE3）——已禁用多线程，顺序执行
+    # STEP C: 讨论（原 STAGE3）
+    # 目标：
+    # - 干净聊天室（尊重、简洁、带用户名）
+    # - 每轮讨论都要改分（delta!=0），幅度建议[-0.3, +0.3]（允许0.1/-0.2等）
+    # - 不做严格校验/纠偏：尽量相信模型给的 delta/new_score（只做分数范围clamp）
     # -----------------------------------------------------
     global_messages: List[str] = []
-    per_agent_discussion: Dict[str, List[Dict[str, Any]]] = {
-        str(p.get("uuid")): [] for p in kept_personas
-    }
+    per_agent_discussion: Dict[str, List[Dict[str, Any]]] = {str(p.get("uuid")): [] for p in kept_personas}
 
     n_kept = len(kept_personas)
+
+    disc_decimals = max(1, int(score_decimals))  # 讨论分数建议至少1位小数
+    discussion_scores: Dict[str, float] = {
+        str(p.get("uuid")): round(float(pre_scores.get(str(p.get("uuid")), 3.0)), disc_decimals)
+        for p in kept_personas
+    }
+
+    def _username_of(persona_raw: Dict[str, Any], uid: str) -> str:
+        u = str(persona_raw.get("username", "") or "").strip()
+        return u if u else f"user_{_short_uid(uid)}"
+
+    def _clean_one_line(s: str, n: int = 240) -> str:
+        s = str(s or "").replace("\r", " ").replace("\n", " ").strip()
+        s = re.sub(r"\s+", " ", s)
+        return s if len(s) <= n else (s[:n] + " ...")
+
+    def _strip_leading_bracket_name(msg: str) -> str:
+        m = re.match(r"^\s*\[[^\]]+\]\s*[:\-]?\s*(.*)$", msg.strip())
+        return (m.group(1).strip() if m else msg.strip())
 
     if use_discussion and n_kept > 0:
         for r in range(1, rounds + 1):
             stage_name = f"discussion_round_{r}"
             tracker.set_total(stage_name, n_kept)
 
-            # 讨论阶段不再使用多线程，强制顺序执行，避免端点在高压下“炸锅”
+            monitor = getattr(llm, "monitor", None)
+            default_workers = max(1, min(max_workers_cfg, n_kept))
+            if isinstance(monitor, AdaptiveConcurrencyController):
+                workers = monitor.suggest_workers(default_workers)
+            else:
+                workers = default_workers
+            workers = max(1, min(workers, n_kept, HARD_MAX_WORKERS))
+
             logger.info(
                 "STAGE START: %s | total_tasks=%d | visible_window=%d | workers=%d",
-                stage_name, n_kept, window, 1
+                stage_name,
+                n_kept,
+                window,
+                workers,
             )
 
             tail = global_messages[-window:]
 
-            def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str]:
+            def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, float, float, str, str]:
                 uid = str(persona_raw.get("uuid"))
+                username = _username_of(persona_raw, uid)
                 persona_txt = _persona_text(persona_raw) if use_persona else None
-                stance = stances.get(uid, "My impression is forming.")
-                system, user = prompt_discussion_message(meta, persona_txt, stance, tail)
+
+                prev_sc = round(float(discussion_scores.get(uid, pre_scores.get(uid, 3.0))), disc_decimals)
+                stance = stances.get(uid, f"My current score is {prev_sc:.1f}.")
+
+                system, user = prompt_discussion_message(
+                    meta=meta,
+                    persona_text=persona_txt,
+                    username=username,
+                    agent_stance=stance,
+                    current_score=prev_sc,
+                    discussion_tail=tail,
+                )
                 _, parsed = llm.chat_json(
                     system=system,
                     user=user,
@@ -1489,25 +1586,76 @@ def run_one_book(
                     },
                 )
                 obj = parsed or {}
-                msg = str(obj.get("message", "")).strip() or "(no message)"
-                return uid, msg
 
-            # 🔴 这里改成顺序调用，按 persona 顺序一个个来
-            round_msgs: List[Tuple[str, str]] = []
-            for persona_raw in kept_personas:
-                uid, msg = _disc_worker(persona_raw)
-                round_msgs.append((uid, msg))
+                raw_msg = str(obj.get("message", "")).strip() or "(no message)"
+                body = _clean_one_line(_strip_leading_bracket_name(raw_msg))
 
-            # 固定顺序合并，保证可复现
-            for uid, msg in sorted(round_msgs, key=lambda x: x[0]):
-                global_messages.append(msg)
-                per_agent_discussion[uid].append({"round": r, "message": msg})
+                # 新协议：优先读 obj["score"]；兼容旧协议（new_score / delta）
+                score_val: Optional[float] = None
+                try:
+                    if obj.get("score", None) is not None:
+                        score_val = float(obj.get("score"))
+                except Exception:
+                    score_val = None
+
+                # 兼容旧字段（如果模型还在吐 new_score）
+                if score_val is None:
+                    try:
+                        if obj.get("new_score", None) is not None:
+                            score_val = float(obj.get("new_score"))
+                    except Exception:
+                        score_val = None
+
+                # 最后兜底兼容：如果只给了 delta（旧格式），允许用它更新
+                if score_val is None:
+                    try:
+                        if obj.get("delta", None) is not None:
+                            score_val = float(prev_sc) + float(obj.get("delta"))
+                    except Exception:
+                        score_val = None
+
+                if score_val is not None:
+                    new_sc = round(clamp_score(score_val), disc_decimals)
+                else:
+                    new_sc = prev_sc  # 不做强制纠偏/强制改分
+
+                delta_used = round(new_sc - prev_sc, disc_decimals)  # 仅用于内部记录/分析（不再喂给模型）
+
+                # 聊天行：不再展示 Δ，避免“跟风调分”信号
+                chat_line = f"[{username}] (score {new_sc:.1f}): {body}"
+                chat_line = _clean_one_line(chat_line, n=320)
+
+                return uid, username, float(delta_used), float(new_sc), chat_line, body
+
+            round_rows: List[Tuple[str, str, float, float, str, str]] = []
+            if workers == 1:
+                for persona_raw in kept_personas:
+                    round_rows.append(_disc_worker(persona_raw))
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as ex:
+                    futures = [ex.submit(_disc_worker, p) for p in kept_personas]
+                    for fu in as_completed(futures):
+                        round_rows.append(fu.result())
+
+            # 固定顺序合并（按 uid），避免并发导致顺序漂移
+            for uid, username, delta_used, new_sc, chat_line, body in sorted(round_rows, key=lambda x: x[0]):
+                global_messages.append(chat_line)
+                per_agent_discussion[uid].append(
+                    {
+                        "round": r,
+                        "username": username,
+                        "score": float(new_sc),
+                        "message": body,
+                    }
+                )
+                discussion_scores[uid] = float(new_sc)
+                stances[uid] = f"My current score is {new_sc:.1f}. {body}"
 
             logger.info("STAGE DONE: %s | total_messages=%d", stage_name, len(global_messages))
 
-
     # -----------------------------------------------------
     # STEP D: 最终打分（原 STAGE4）
+    # baseline pre_score = discussion_scores（讨论轮已经滚动更新）
     # -----------------------------------------------------
     post_scores: Dict[str, float] = {}
     final_reviews: Dict[str, str] = {}
@@ -1525,22 +1673,29 @@ def run_one_book(
                 workers = monitor.suggest_workers(default_workers)
             else:
                 workers = default_workers
-            workers = max(1, min(workers, n_kept))
+            workers = max(1, min(workers, n_kept, HARD_MAX_WORKERS))
 
             logger.info(
                 "STAGE START: summary_final | total_tasks=%d | visible_window=%d | workers=%d",
-                n_kept, window, workers
+                n_kept,
+                window,
+                workers,
             )
 
             def _summary_final_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
                 uid = str(persona_raw.get("uuid"))
+                username = _username_of(persona_raw, uid)
                 persona_txt = _persona_text(persona_raw) if use_persona else None
                 gs = base_payload[uid]["payload"]
 
+                baseline_sc = round(float(discussion_scores.get(uid, pre_scores.get(uid, 3.0))), disc_decimals)
+
                 system, user = prompt_summary_final(
-                    meta,
-                    gs,
-                    persona_txt,
+                    meta=meta,
+                    global_summary=gs,
+                    persona_text=persona_txt,
+                    username=username,
+                    current_score=baseline_sc,
                     discussion_tail=disc_tail if use_discussion else [],
                 )
                 _, parsed = llm.chat_json(
@@ -1559,21 +1714,24 @@ def run_one_book(
                 )
                 obj = parsed or {}
                 critique = str(obj.get("critique", "")).strip()
+
                 try:
-                    score = float(obj.get("score", 3.0))
+                    score = float(obj.get("score", baseline_sc))
                 except Exception:
-                    score = 3.0
+                    score = baseline_sc
                 score = round(clamp_score(score), score_decimals)
+
                 return uid, score, critique
 
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = [ex.submit(_summary_final_worker, p) for p in kept_personas]
                 for fu in as_completed(futures):
                     uid, sc, critique = fu.result()
-                    pre_scores[uid] = sc  # 对 summary_based 来说，最终得分就是这里的 score
+                    post_scores[uid] = sc
                     final_reviews[uid] = critique
 
             logger.info("STAGE DONE: summary_final")
+
         else:
             if use_discussion:
                 stage_name = "finalize_after_discussion"
@@ -1585,19 +1743,29 @@ def run_one_book(
                     workers = monitor.suggest_workers(default_workers)
                 else:
                     workers = default_workers
-                workers = max(1, min(workers, n_kept))
+                workers = max(1, min(workers, n_kept, HARD_MAX_WORKERS))
 
                 logger.info(
                     "STAGE START: finalize_after_discussion | total_tasks=%d | visible_window=%d | workers=%d",
-                    n_kept, window, workers
+                    n_kept,
+                    window,
+                    workers,
                 )
 
                 def _finalize_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
                     uid = str(persona_raw.get("uuid"))
+                    username = _username_of(persona_raw, uid)
                     persona_txt = _persona_text(persona_raw) if use_persona else None
-                    pre = float(pre_scores.get(uid, 3.0))
 
-                    system, user = prompt_finalize_after_discussion(meta, persona_txt, pre, disc_tail)
+                    baseline_sc = round(float(discussion_scores.get(uid, pre_scores.get(uid, 3.0))), disc_decimals)
+
+                    system, user = prompt_finalize_after_discussion(
+                        meta=meta,
+                        persona_text=persona_txt,
+                        username=username,
+                        pre_score=baseline_sc,
+                        discussion_tail=disc_tail,
+                    )
                     _, parsed = llm.chat_json(
                         system=system,
                         user=user,
@@ -1613,11 +1781,13 @@ def run_one_book(
                         },
                     )
                     obj = parsed or {}
+
                     try:
-                        fs = float(obj.get("final_score", pre))
+                        fs = float(obj.get("final_score", baseline_sc))
                     except Exception:
-                        fs = pre
+                        fs = baseline_sc
                     fs = round(clamp_score(fs), score_decimals)
+
                     review = str(obj.get("final_review", "")).strip()
                     return uid, fs, review
 
@@ -1647,7 +1817,9 @@ def run_one_book(
                 "keep": keep,
                 "interest_score": float(decisions.get(uid, {}).get("interest_score", 50.0)),
                 "reason": str(decisions.get(uid, {}).get("reason", "")),
-            } if use_interest_filter else None,
+            }
+            if use_interest_filter
+            else None,
             "discussion": per_agent_discussion.get(uid, []) if (use_discussion and keep) else [],
             "pre_discussion_score": float(pre_scores.get(uid, None)) if uid in pre_scores else None,
             "post_discussion_score": float(post_scores.get(uid, None)) if uid in post_scores else None,

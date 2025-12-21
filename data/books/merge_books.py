@@ -15,7 +15,7 @@ import difflib
 # =========================
 BOOKS_DIR = Path("")                 # 书籍文件夹根目录
 INDEX_XLSX = BOOKS_DIR / "index.xlsx"          # Excel 书单
-OUT_JSON = BOOKS_DIR / "merged_books.json"     # 输出
+OUT_JSON = BOOKS_DIR / "merged_books_fix.json"     # 输出
 FUZZY_CUTOFF = 0.92                            # 默认开启模糊匹配 & 阈值
 
 
@@ -82,8 +82,8 @@ def row_to_metadata(row: Dict[str, Any],
     md = {
         "title": get(col_title),
         "author": get(col_author),
-        "goodreads_rating": get(col_rating),
-        "ratings_count": get(col_count),
+        # "goodreads_rating": get(col_rating),
+        # "ratings_count": get(col_count),
         "intro": get(col_intro),
     }
     return md

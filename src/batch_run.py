@@ -34,11 +34,11 @@ from src.runner import (
 load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_nanotest.json"
+BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents test1"
+BATCH_ID = "4agents exp1"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -65,7 +65,7 @@ API_KEY_ENV = "QWEN_API_KEY"
 
 LLM_TEMPERATURE = 0.6
 LLM_TOP_P = 0.9
-LLM_MAX_TOKENS = 800
+LLM_MAX_TOKENS = 10000
 LLM_TIMEOUT_SEC = 1500
 
 # 请求级重试
@@ -83,12 +83,12 @@ PER_BOOK_AGENT_WORKERS = 4
 # ✅ 网格维度（全部可扫）
 # -----------------------------
 METHODS = ["aggregation", "incremental", "summary_based"]
-USE_PERSONA_OPTS = [True]          # persona 关闭时，会自动复用 nopersona 基线
-USE_DISCUSSION_OPTS = [True]
+USE_PERSONA_OPTS = [False,True]
+USE_DISCUSSION_OPTS = [False,True]
 USE_INTEREST_FILTER_OPTS = [True]
 
-DISCUSSION_ROUNDS_OPTS = [2,4,6]
-DISCUSSION_WINDOW_OPTS = [10]
+DISCUSSION_ROUNDS_OPTS = [1,2,4]
+DISCUSSION_WINDOW_OPTS = [8]
 N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
 DISCUSSION_AFFECTS_SCORE_OPTS = [True]
@@ -248,6 +248,34 @@ def make_run_id(
         f"__cbs={int(chapter_batch_size)}"
     )
 
+def make_book_run_id(
+    book_title: str,
+    method: str,
+    use_persona: bool,
+    use_discussion: bool,
+    use_interest: bool,
+    discussion_rounds: int,
+    discussion_window: int,
+    n_agents: int,
+    score_decimals: int,
+    discussion_affects_score: bool,
+    chapter_batch_size: int,
+) -> str:
+    book_tag = sanitize_name(book_title, max_len=80) or "UNKNOWN_BOOK"
+    core = make_run_id(
+        method=method,
+        use_persona=use_persona,
+        use_discussion=use_discussion,
+        use_interest=use_interest,
+        discussion_rounds=discussion_rounds,
+        discussion_window=discussion_window,
+        n_agents=n_agents,
+        score_decimals=score_decimals,
+        discussion_affects_score=discussion_affects_score,
+        chapter_batch_size=chapter_batch_size,
+    )
+    # 最外层再 sanitize 一次，保证整体可做目录名
+    return sanitize_name(f"book={book_tag}__{core}")
 
 def build_cfg(
     output_root: Path,
@@ -341,6 +369,179 @@ def prepare_experiment_dir(exp_root: Path) -> Tuple[bool, Path, Path]:
     safe_mkdir(exp_root / "logs")  # 给 runner 写 jsonl/log 用
     return True, done_path, running_path
 
+# ============================================================
+# 单本书“大任务”：顺序跑所有实验配置（绑定一个 base_url）
+# ============================================================
+def run_all_experiments_for_book(
+    book_index: int,
+    base_url: str,
+    books: List[Dict[str, Any]],
+    personas_raw: List[Dict[str, Any]],
+    experiments: List[Tuple],
+    chapter_batch_size: int,
+) -> Tuple[int, str, int, int]:
+    """
+    对单本书：
+    - 绑定一个千问端点 base_url
+    - 依次跑 experiments 里的每个实验配置
+    - 每个 (book, experiment_cfg) 拥有独立的 run_id / 目录 / _DONE.json
+    - 若 _DONE.json 已存在：直接跳过
+    返回：(book_index, book_title, n_ran, n_skipped)
+    """
+    book_record = books[book_index]
+    meta = (book_record.get("metadata", {}) or {})
+    book_title = str(meta.get("title", "UNKNOWN")).strip() or f"BOOK_{book_index+1}"
+
+    print(f"[TASK] BOOK[{book_index+1}/{len(books)}] {book_title} | base_url={base_url} | exps={len(experiments)}")
+
+    n_ran = 0
+    n_skipped = 0
+
+    # 预先合并章节（避免每个实验都再合一次；inplace=False，不污染原 books 列表）
+    processed_book = batch_merge_chapters(
+        book_record,
+        batch_size=int(chapter_batch_size),
+        inplace=False,
+    )
+
+    for exp_local_idx, (m, up, ud, ui, rr, ww, na, sd, das) in enumerate(experiments):
+        # 针对「单本书 + 单实验配置」的 run_id
+        run_id = make_book_run_id(
+            book_title=book_title,
+            method=m,
+            use_persona=up,
+            use_discussion=ud,
+            use_interest=ui,
+            discussion_rounds=rr,
+            discussion_window=ww,
+            n_agents=na,
+            score_decimals=sd,
+            discussion_affects_score=das,
+            chapter_batch_size=chapter_batch_size,
+        )
+
+        exp_root = OUTPUTS_ROOT / run_id
+        should_run, done_path, running_path = prepare_experiment_dir(exp_root)
+
+        if not should_run:
+            # 这个 (book, cfg) 已经完成，跳过
+            print(f"[SKIP EXP] book={book_title} | run_id={run_id} (DONE exists)")
+            n_skipped += 1
+            continue
+
+        # 稍微错峰一下（只对每本书的第一个实验做延迟）
+        if START_STAGGER_SEC > 0 and exp_local_idx == 0:
+            time.sleep(book_index * START_STAGGER_SEC)
+
+        logger = setup_logger(
+            str(exp_root / "logs"),
+            also_file=True,
+            logger_name=f"llm_trace_{run_id}",
+        )
+
+        api_key = os.getenv(API_KEY_ENV, "")
+        if not api_key:
+            raise RuntimeError(f"环境变量 {API_KEY_ENV} 未设置。")
+
+        monitor = AdaptiveConcurrencyController(
+            min_workers=1,
+            max_workers=int(PER_BOOK_AGENT_WORKERS),
+            latency_threshold_s=100.0,
+            error_threshold=0.2,
+        )
+
+        llm = ThreadLocalLLM(
+            base_url=str(base_url),
+            api_key=api_key,
+            model=LLM_MODEL,
+            timeout_sec=int(LLM_TIMEOUT_SEC),
+            logger=logger,
+            retry_max_attempts=int(RETRY_MAX_ATTEMPTS),
+            retry_base_sleep_sec=float(RETRY_BASE_SLEEP_SEC),
+            retry_max_sleep_sec=float(RETRY_MAX_SLEEP_SEC),
+            retry_jitter=float(RETRY_JITTER),
+            fail_fast=bool(FAIL_FAST),
+            monitor=monitor,
+        )
+
+        personas_used = personas_raw[: int(na)]
+
+        atomic_write_json(
+            running_path,
+            {
+                "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "run_id": run_id,
+                "book_index": book_index,
+                "book_title": book_title,
+                "base_url": str(base_url),
+                "grid": {
+                    "method": m,
+                    "use_persona": up,
+                    "use_discussion": ud,
+                    "use_interest_filter": ui,
+                    "discussion_rounds": rr,
+                    "discussion_window": ww,
+                    "n_agents": na,
+                    "score_decimals": sd,
+                    "discussion_affects_score": das,
+                    "chapter_batch_size": int(chapter_batch_size),
+                },
+                "books": 1,
+                "agents": len(personas_used),
+            },
+        )
+
+        logger.info(
+            "=== EXP START === run_id=%s | book=%s | base_url=%s | n_agents=%d | rounds=%d | window=%d | score_decimals=%d | das=%s | chapter_batch_size=%d",
+            run_id,
+            book_title,
+            str(base_url),
+            len(personas_used),
+            rr,
+            ww,
+            sd,
+            str(das),
+            int(chapter_batch_size),
+        )
+
+        # 构造 cfg（注意 output_root 换成了 exp_root）
+        cfg = build_cfg(
+            output_root=exp_root,
+            base_url=base_url,
+            method=m,
+            use_persona=up,
+            use_discussion=ud,
+            use_interest=ui,
+            discussion_rounds=rr,
+            discussion_window=ww,
+            n_agents=na,
+            score_decimals=sd,
+            discussion_affects_score=das,
+            chapter_batch_size=chapter_batch_size,
+        )
+
+        # 🔑 这里只评测「这一本文书」——不再在这里 for 所有 books
+        evaluate_single_book(cfg, llm, logger, processed_book, personas_used)
+
+        atomic_write_json(
+            done_path,
+            {
+                "finished_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "run_id": run_id,
+                "book_index": book_index,
+                "book_title": book_title,
+            },
+        )
+        try:
+            if running_path.exists():
+                running_path.unlink()
+        except Exception:
+            pass
+
+        logger.info("=== EXP END === run_id=%s | book=%s", run_id, book_title)
+        n_ran += 1
+
+    return book_index, book_title, n_ran, n_skipped
 
 # ============================================================
 # 单个实验：顺序跑所有书（每个大实验绑定一个 base_url）
@@ -478,9 +679,6 @@ def run_one_experiment(
     return run_id
 
 
-# ============================================================
-# main（无 CLI）
-# ============================================================
 def main() -> None:
     safe_mkdir(BATCH_ROOT)
     safe_mkdir(OUTPUTS_ROOT)
@@ -490,38 +688,49 @@ def main() -> None:
     personas_raw = read_json(PERSONAS_JSON)
     experiments = build_experiments_grid()
 
+    n_books = len(books)
+    n_exps = len(experiments)
+
     print(f"[BATCH] batch_root={BATCH_ROOT}")
     print(f"[BATCH] outputs_root={OUTPUTS_ROOT}")
     print(f"[BATCH] base_eval_root={BASE_EVAL_ROOT}")
-    print(f"[BATCH] books={len(books)} personas={len(personas_raw)}")
-    print(f"[BATCH] experiments={len(experiments)} max_workers={MAX_EXPERIMENT_WORKERS}")
+    print(f"[BATCH] books={n_books} personas={len(personas_raw)}")
+    print(f"[BATCH] experiments_per_book={n_exps}")
     print(f"[BATCH] chapter_batch_size={CHAPTER_BATCH_SIZE}")
 
     n_endpoints = max(1, len(QWEN_BASE_URLS))
-    max_workers = min(MAX_EXPERIMENT_WORKERS, n_endpoints)
+    max_workers = min(MAX_EXPERIMENT_WORKERS, n_endpoints, n_books)
 
+    print(f"[BATCH] qwen_endpoints={n_endpoints} max_workers={max_workers}")
+
+    # 顶层并发：每个 worker 持续处理若干本书
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futs = []
-        for exp_idx, (m, up, ud, ui, rr, ww, na, sd, das) in enumerate(experiments):
-            base_url = QWEN_BASE_URLS[exp_idx % n_endpoints]
-            futs.append(ex.submit(
-                run_one_experiment,
-                exp_idx,
-                base_url,
-                books,
-                personas_raw,
-                m, up, ud, ui, rr, ww, na, sd, das,
-                CHAPTER_BATCH_SIZE
-            ))
+        for book_idx in range(n_books):
+            base_url = QWEN_BASE_URLS[book_idx % n_endpoints]
+            futs.append(
+                ex.submit(
+                    run_all_experiments_for_book,
+                    book_idx,
+                    base_url,
+                    books,
+                    personas_raw,
+                    experiments,
+                    CHAPTER_BATCH_SIZE,
+                )
+            )
 
-        done = 0
+        done_books = 0
         for fu in as_completed(futs):
-            run_id = fu.result()
-            done += 1
-            print(f"[{done}/{len(futs)}] OK  {run_id}")
+            book_idx, book_title, n_ran, n_skipped = fu.result()
+            done_books += 1
+            print(
+                f"[{done_books}/{n_books}] BOOK DONE {book_title} | exps_ran={n_ran} | exps_skipped={n_skipped}"
+            )
 
-    print(f"[BATCH] DONE. Raw outputs under: {OUTPUTS_ROOT}")
+    print(f"[BATCH] ALL BOOKS DONE. Raw outputs under: {OUTPUTS_ROOT}")
     print(f"[BATCH] Base eval cache under: {BASE_EVAL_ROOT}")
+
 
 
 def test() -> None:
@@ -536,27 +745,36 @@ def test() -> None:
     personas_raw = read_json(PERSONAS_JSON)
     experiments = build_experiments_grid()
 
-    print(f"[BATCH] batch_root={BATCH_ROOT}")
-    print(f"[BATCH] outputs_root={OUTPUTS_ROOT}")
-    print(f"[BATCH] base_eval_root={BASE_EVAL_ROOT}")
-    print(f"[BATCH] books={len(books)} personas={len(personas_raw)}")
-    print(f"[BATCH] experiments={len(experiments)} (SEQUENTIAL)")
-    print(f"[BATCH] chapter_batch_size={CHAPTER_BATCH_SIZE}")
+    n_books = len(books)
+    n_exps = len(experiments)
 
-    base_url = QWEN_BASE_URLS[0]
-    for exp_idx, (m, up, ud, ui, rr, ww, na, sd, das) in enumerate(experiments, start=1):
-        run_id = run_one_experiment(
-            exp_idx - 1,
-            base_url,
-            books,
-            personas_raw,
-            m, up, ud, ui, rr, ww, na, sd, das,
-            CHAPTER_BATCH_SIZE
+    print(f"[BATCH-TEST] batch_root={BATCH_ROOT}")
+    print(f"[BATCH-TEST] outputs_root={OUTPUTS_ROOT}")
+    print(f"[BATCH-TEST] base_eval_root={BASE_EVAL_ROOT}")
+    print(f"[BATCH-TEST] books={n_books} personas={len(personas_raw)}")
+    print(f"[BATCH-TEST] experiments_per_book={n_exps} (SEQUENTIAL)")
+    print(f"[BATCH-TEST] chapter_batch_size={CHAPTER_BATCH_SIZE}")
+
+    base_url = QWEN_BASE_URLS[0] if QWEN_BASE_URLS else "http://localhost:8000/v1"
+
+    done_books = 0
+    for book_idx in range(n_books):
+        _, book_title, n_ran, n_skipped = run_all_experiments_for_book(
+            book_index=book_idx,
+            base_url=base_url,
+            books=books,
+            personas_raw=personas_raw,
+            experiments=experiments,
+            chapter_batch_size=CHAPTER_BATCH_SIZE,
         )
-        print(f"[{exp_idx}/{len(experiments)}] OK  {run_id}")
+        done_books += 1
+        print(
+            f"[{done_books}/{n_books}] BOOK DONE {book_title} | exps_ran={n_ran} | exps_skipped={n_skipped}"
+        )
 
-    print(f"[BATCH] DONE. Raw outputs under: {OUTPUTS_ROOT}")
-    print(f"[BATCH] Base eval cache under: {BASE_EVAL_ROOT}")
+    print(f"[BATCH-TEST] DONE. Raw outputs under: {OUTPUTS_ROOT}")
+    print(f"[BATCH-TEST] Base eval cache under: {BASE_EVAL_ROOT}")
+
 
 
 if __name__ == "__main__":
