@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-batch_run.py  (实验级断点续跑：简化版)
+batch_run.py  (实验级断点续跑 + 多端点负载均衡 + STAGE2 结果复用)
 ------------------------------------------------------------
-断点续跑策略（你要求的）：
+断点续跑策略：
 - 若 outputs/<run_id>/_DONE.json 存在：跳过该实验
 - 若 outputs/<run_id>/ 存在但没有 _DONE.json：删掉整个目录后重跑
-
-不做 per-book 的 DONE/LOCK/STATE。
 """
 
 from __future__ import annotations
@@ -19,8 +17,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Tuple
+
 from dotenv import load_dotenv
-from src.runner import setup_logger, ThreadLocalLLM, evaluate_single_book
+
+from src.runner import (
+    setup_logger,
+    ThreadLocalLLM,
+    AdaptiveConcurrencyController,
+    evaluate_single_book,
+)
 
 
 # ============================================================
@@ -29,23 +34,32 @@ from src.runner import setup_logger, ThreadLocalLLM, evaluate_single_book
 load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books.json"   # 你的新输入（list）
+BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_nanotest.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "1"
+BATCH_ID = "4agents test1"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
+BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
 
-MAX_EXPERIMENT_WORKERS = 1
+# 多个千问端点（你需要填成真实的 6 个 base_url）
+QWEN_BASE_URLS = [
+    "http://10.130.71.2:30071/v1",
+    "http://10.130.71.2:30921/v1",
+    "http://10.130.71.2:30781/v1",
+    "http://10.130.71.2:30116/v1",
+    "http://10.130.71.2:30810/v1",
+]
+
+# 顶层“每个端点一个大实验线程”
+MAX_EXPERIMENT_WORKERS = max(1, len(QWEN_BASE_URLS))
 START_STAGGER_SEC = 1.0
 
-# ✅ 新增：章节合并 batchsize
-# 例如 5：chapter1-5 合并为 1，6-10 合并为 2 ...
+# ✅ 章节合并 batchsize
 CHAPTER_BATCH_SIZE = 1   # <= 1 表示不合并（保持原样）
 
 # LLM 配置（千问 32B，DashScope compatible）
-LLM_BASE_URL = "https://deepseek.fosu.edu.cn/v1"
 LLM_MODEL = "qwen-32b"
 API_KEY_ENV = "QWEN_API_KEY"
 
@@ -61,7 +75,7 @@ RETRY_MAX_SLEEP_SEC = 30.0
 RETRY_JITTER = 0.2
 FAIL_FAST = True
 
-# runner 内部：同一本书 agent 并发
+# runner 内部：同一本书 agent 并发的上限（自适应控制会在这个范围内浮动）
 PER_BOOK_AGENT_WORKERS = 4
 
 
@@ -69,11 +83,11 @@ PER_BOOK_AGENT_WORKERS = 4
 # ✅ 网格维度（全部可扫）
 # -----------------------------
 METHODS = ["aggregation", "incremental", "summary_based"]
-USE_PERSONA_OPTS = [True,]
+USE_PERSONA_OPTS = [True]          # persona 关闭时，会自动复用 nopersona 基线
 USE_DISCUSSION_OPTS = [True]
 USE_INTEREST_FILTER_OPTS = [True]
 
-DISCUSSION_ROUNDS_OPTS = [2]
+DISCUSSION_ROUNDS_OPTS = [2,4,6]
 DISCUSSION_WINDOW_OPTS = [10]
 N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
@@ -119,7 +133,7 @@ def _safe_int(x: Any, default: int = 0) -> int:
 def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: bool = True) -> Dict[str, Any]:
     """
     将 book_record["chapter"] 或 ["chapters"] 按 batch_size 合并。
-    - inplace=True：直接修改原 book_record（你调试时看 books 会变化）
+    - inplace=True：直接修改原 book_record
     - 兼容字段名：chapter / chapters
     """
     if not isinstance(book_record, dict):
@@ -127,7 +141,6 @@ def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: 
     if batch_size is None or int(batch_size) <= 1:
         return book_record
 
-    # ✅ 兼容你的数据：优先 chapters，其次 chapter
     chap_key = None
     if isinstance(book_record.get("chapters", None), list):
         chap_key = "chapters"
@@ -136,20 +149,12 @@ def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: 
     else:
         return book_record
 
-    # ✅ 防止重复合并（非常重要：你实验是多线程跑的）
     if book_record.get("_chapter_batched", False) and book_record.get("_chapter_batch_size", None) == int(batch_size):
         return book_record
 
     chapters = book_record.get(chap_key, [])
     if not chapters:
         return book_record
-
-    # 尽量按 Number 排序（没有就按原顺序）
-    def _safe_int(x: Any, default: int = 0) -> int:
-        try:
-            return int(x)
-        except Exception:
-            return default
 
     def chap_key_fn(c: Any, idx: int) -> Tuple[int, int]:
         if isinstance(c, dict) and ("Number" in c):
@@ -169,7 +174,6 @@ def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: 
     for b_idx, start in enumerate(range(0, n, bs), start=1):
         group = chapters_sorted[start:start + bs]
 
-        # 原始章节号范围（用来给 title 更可读）
         nums = []
         for c in group:
             if isinstance(c, dict):
@@ -181,10 +185,8 @@ def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: 
         else:
             rng_str = f"{start+1}-{min(start+bs, n)}"
 
-        # 你的章节 dict 只有 Number/text，通常没 title，所以我们构造一个 title
         merged_title = f"Chapters {rng_str}"
 
-        # 合并 text：保留边界
         parts: List[str] = []
         for c in group:
             if not isinstance(c, dict):
@@ -200,15 +202,14 @@ def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: 
         merged_text = "\n\n".join(parts).strip()
 
         merged.append({
-            "Number": int(b_idx),  # ✅ 新编号：1..批次数
-            "title": merged_title, # ✅ 有些 runner 可能需要 title；没有也不坏
+            "Number": int(b_idx),
+            "title": merged_title,
             "text": merged_text,
         })
 
     target = book_record if inplace else dict(book_record)
     target[chap_key] = merged
 
-    # 可选：同时写到另一个 key，避免 runner 用另一套字段名（双保险）
     if chap_key == "chapter":
         target["chapters"] = merged
     else:
@@ -220,8 +221,6 @@ def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: 
     target["_chapters_batched_count"] = int(len(merged))
     target["_chap_key_used"] = chap_key
     return target
-
-
 
 
 def make_run_id(
@@ -246,12 +245,13 @@ def make_run_id(
         f"__na={n_agents}"
         f"__sd={score_decimals}"
         f"__das={int(discussion_affects_score)}"
-        f"__cbs={int(chapter_batch_size)}"    # ✅ 新增：章节 batchsize 写进 run_id
+        f"__cbs={int(chapter_batch_size)}"
     )
 
 
 def build_cfg(
     output_root: Path,
+    base_url: str,
     method: str,
     use_persona: bool,
     use_discussion: bool,
@@ -268,7 +268,7 @@ def build_cfg(
     """
     return SimpleNamespace(
         llm=SimpleNamespace(
-            base_url=LLM_BASE_URL,
+            base_url=str(base_url),
             api_key_env=API_KEY_ENV,
             model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
@@ -292,15 +292,14 @@ def build_cfg(
             n_agents=n_agents,
             score_decimals=score_decimals,
             discussion_affects_score=discussion_affects_score,
-
-            # ✅ 挂到 cfg 上（便于日志/后续你在 runner 里也能用到）
             chapter_batch_size=int(chapter_batch_size),
         ),
         concurrency=SimpleNamespace(
             max_workers=PER_BOOK_AGENT_WORKERS
         ),
         paths=SimpleNamespace(
-            output_root=str(output_root)
+            output_root=str(output_root),
+            base_eval_root=str(BASE_EVAL_ROOT),
         )
     )
 
@@ -335,21 +334,20 @@ def prepare_experiment_dir(exp_root: Path) -> Tuple[bool, Path, Path]:
     if done_path.exists():
         return False, done_path, running_path
 
-    # 没 DONE：只要目录存在，就认为是“只做了一半”，删掉
     if exp_root.exists():
         shutil.rmtree(exp_root, ignore_errors=True)
 
     safe_mkdir(exp_root)
-    safe_mkdir(exp_root / "logs")  # 给 runner 写 jsonl/log 用（更稳）
-
+    safe_mkdir(exp_root / "logs")  # 给 runner 写 jsonl/log 用
     return True, done_path, running_path
 
 
 # ============================================================
-# 单个实验：顺序跑所有书
+# 单个实验：顺序跑所有书（每个大实验绑定一个 base_url）
 # ============================================================
 def run_one_experiment(
     exp_index: int,
+    base_url: str,
     books: List[Dict[str, Any]],
     personas_raw: List[Dict[str, Any]],
     method: str,
@@ -367,11 +365,8 @@ def run_one_experiment(
         method, use_persona, use_discussion, use_interest,
         discussion_rounds, discussion_window, n_agents,
         score_decimals, discussion_affects_score,
-        chapter_batch_size=chapter_batch_size
+        chapter_batch_size=chapter_batch_size,
     )
-
-    # # TODO 测试：
-    # books = books[:1]
 
     exp_root = OUTPUTS_ROOT / run_id
 
@@ -380,19 +375,25 @@ def run_one_experiment(
         print(f"[SKIP EXP] {run_id} (DONE exists)")
         return run_id
 
-    # 错峰启动，降低并发冲击
     if START_STAGGER_SEC > 0:
         time.sleep(exp_index * START_STAGGER_SEC)
 
-    # logger：每个实验一个独立 logger 名，避免 handler 冲突
     logger = setup_logger(str(exp_root / "logs"), also_file=True, logger_name=f"llm_trace_{run_id}")
 
     api_key = os.getenv(API_KEY_ENV, "")
     if not api_key:
         raise RuntimeError(f"环境变量 {API_KEY_ENV} 未设置。")
 
+    # 自适应并发控制器：runner 内部按阶段使用 suggest_workers 调整每个阶段的 ThreadPoolExecutor 大小
+    monitor = AdaptiveConcurrencyController(
+        min_workers=1,
+        max_workers=int(PER_BOOK_AGENT_WORKERS),
+        latency_threshold_s=100.0,
+        error_threshold=0.2,
+    )
+
     llm = ThreadLocalLLM(
-        base_url=LLM_BASE_URL,
+        base_url=str(base_url),
         api_key=api_key,
         model=LLM_MODEL,
         timeout_sec=int(LLM_TIMEOUT_SEC),
@@ -402,14 +403,15 @@ def run_one_experiment(
         retry_max_sleep_sec=float(RETRY_MAX_SLEEP_SEC),
         retry_jitter=float(RETRY_JITTER),
         fail_fast=bool(FAIL_FAST),
+        monitor=monitor,
     )
 
     personas_used = personas_raw[: int(n_agents)]
 
-    # 写 RUNNING（可选，仅用于人类查看；下次启动仍会“没 DONE 就删目录重跑”）
     atomic_write_json(running_path, {
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "run_id": run_id,
+        "base_url": str(base_url),
         "grid": {
             "method": method,
             "use_persona": use_persona,
@@ -427,14 +429,14 @@ def run_one_experiment(
     })
 
     logger.info(
-        "=== EXP START === run_id=%s | books=%d | n_agents=%d | rounds=%d | window=%d | score_decimals=%d | das=%s | chapter_batch_size=%d",
-        run_id, len(books), len(personas_used), discussion_rounds, discussion_window, score_decimals,
+        "=== EXP START === run_id=%s | base_url=%s | books=%d | n_agents=%d | rounds=%d | window=%d | score_decimals=%d | das=%s | chapter_batch_size=%d",
+        run_id, str(base_url), len(books), len(personas_used), discussion_rounds, discussion_window, score_decimals,
         str(discussion_affects_score), int(chapter_batch_size)
     )
 
-    # cfg.output_root = 实验目录（不再每本书一个目录，简化）
     cfg = build_cfg(
         output_root=exp_root,
+        base_url=base_url,
         method=method,
         use_persona=use_persona,
         use_discussion=use_discussion,
@@ -447,14 +449,11 @@ def run_one_experiment(
         chapter_batch_size=chapter_batch_size,
     )
 
-    # 顺序跑所有书：某本书异常由 runner/batch 的策略决定
     for i, book_record in enumerate(books, start=1):
         title = (book_record.get("metadata", {}) or {}).get("title", "UNKNOWN")
 
-        # ✅ 这里做章节合并：batch_size=5 -> 1-5 合并为 1，6-10 合并为 2 ...
         processed_book = batch_merge_chapters(book_record, batch_size=int(chapter_batch_size))
 
-        # 日志里可见合并前后章节数（方便你核对）
         orig_cnt = processed_book.get("_chapters_original_count", None)
         bat_cnt = processed_book.get("_chapters_batched_count", None)
         if orig_cnt is not None and bat_cnt is not None and int(chapter_batch_size) > 1:
@@ -465,7 +464,6 @@ def run_one_experiment(
 
         evaluate_single_book(cfg, llm, logger, processed_book, personas_used)
 
-    # 完成：写 DONE，删 RUNNING
     atomic_write_json(done_path, {
         "finished_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "run_id": run_id,
@@ -486,6 +484,7 @@ def run_one_experiment(
 def main() -> None:
     safe_mkdir(BATCH_ROOT)
     safe_mkdir(OUTPUTS_ROOT)
+    safe_mkdir(BASE_EVAL_ROOT)
 
     books = read_json(BOOKS_MERGED_JSON)
     personas_raw = read_json(PERSONAS_JSON)
@@ -493,16 +492,24 @@ def main() -> None:
 
     print(f"[BATCH] batch_root={BATCH_ROOT}")
     print(f"[BATCH] outputs_root={OUTPUTS_ROOT}")
+    print(f"[BATCH] base_eval_root={BASE_EVAL_ROOT}")
     print(f"[BATCH] books={len(books)} personas={len(personas_raw)}")
     print(f"[BATCH] experiments={len(experiments)} max_workers={MAX_EXPERIMENT_WORKERS}")
     print(f"[BATCH] chapter_batch_size={CHAPTER_BATCH_SIZE}")
 
-    with ThreadPoolExecutor(max_workers=max(1, MAX_EXPERIMENT_WORKERS)) as ex:
+    n_endpoints = max(1, len(QWEN_BASE_URLS))
+    max_workers = min(MAX_EXPERIMENT_WORKERS, n_endpoints)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futs = []
         for exp_idx, (m, up, ud, ui, rr, ww, na, sd, das) in enumerate(experiments):
+            base_url = QWEN_BASE_URLS[exp_idx % n_endpoints]
             futs.append(ex.submit(
                 run_one_experiment,
-                exp_idx, books, personas_raw,
+                exp_idx,
+                base_url,
+                books,
+                personas_raw,
                 m, up, ud, ui, rr, ww, na, sd, das,
                 CHAPTER_BATCH_SIZE
             ))
@@ -514,14 +521,16 @@ def main() -> None:
             print(f"[{done}/{len(futs)}] OK  {run_id}")
 
     print(f"[BATCH] DONE. Raw outputs under: {OUTPUTS_ROOT}")
+    print(f"[BATCH] Base eval cache under: {BASE_EVAL_ROOT}")
 
 
 def test() -> None:
     """
-    纯顺序调试版（不并发），避免你现在这个 test() 的 future/as_completed 逻辑错误。
+    纯顺序调试版（不并发），方便本地单步调试。
     """
     safe_mkdir(BATCH_ROOT)
     safe_mkdir(OUTPUTS_ROOT)
+    safe_mkdir(BASE_EVAL_ROOT)
 
     books = read_json(BOOKS_MERGED_JSON)
     personas_raw = read_json(PERSONAS_JSON)
@@ -529,19 +538,25 @@ def test() -> None:
 
     print(f"[BATCH] batch_root={BATCH_ROOT}")
     print(f"[BATCH] outputs_root={OUTPUTS_ROOT}")
+    print(f"[BATCH] base_eval_root={BASE_EVAL_ROOT}")
     print(f"[BATCH] books={len(books)} personas={len(personas_raw)}")
     print(f"[BATCH] experiments={len(experiments)} (SEQUENTIAL)")
     print(f"[BATCH] chapter_batch_size={CHAPTER_BATCH_SIZE}")
 
+    base_url = QWEN_BASE_URLS[0]
     for exp_idx, (m, up, ud, ui, rr, ww, na, sd, das) in enumerate(experiments, start=1):
         run_id = run_one_experiment(
-            exp_idx - 1, books, personas_raw,
+            exp_idx - 1,
+            base_url,
+            books,
+            personas_raw,
             m, up, ud, ui, rr, ww, na, sd, das,
             CHAPTER_BATCH_SIZE
         )
         print(f"[{exp_idx}/{len(experiments)}] OK  {run_id}")
 
     print(f"[BATCH] DONE. Raw outputs under: {OUTPUTS_ROOT}")
+    print(f"[BATCH] Base eval cache under: {BASE_EVAL_ROOT}")
 
 
 if __name__ == "__main__":

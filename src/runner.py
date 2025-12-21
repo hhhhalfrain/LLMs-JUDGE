@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# runner.py
+
 from __future__ import annotations
 
 import os
@@ -17,6 +19,7 @@ from openai import OpenAI
 import random
 import traceback
 
+
 # =========================
 #  I/O 辅助
 # =========================
@@ -29,6 +32,7 @@ def write_json(path: str, obj: Any) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
+
 
 # =========================
 #  JSON 解析（鲁棒提取）
@@ -54,6 +58,11 @@ def clamp_score(x: float, lo: float = 1.0, hi: float = 5.0) -> float:
 
 def _short_uid(uid: str, n: int = 8) -> str:
     return (uid or "")[:n]
+
+
+def _truncate(s: str, n: int = 260) -> str:
+    s = str(s or "")
+    return s if len(s) <= n else (s[:n] + " ...")
 
 
 # =========================
@@ -110,11 +119,6 @@ class JSONLTraceWriter:
             pass
 
 
-def _truncate(s: str, n: int = 260) -> str:
-    s = str(s or "")
-    return s if len(s) <= n else (s[:n] + " ...")
-
-
 def log_llm_summary_console(
     logger: logging.Logger,
     tracker: Optional[ProgressTracker],
@@ -164,9 +168,70 @@ def log_llm_summary_console(
     )
 
 
+# =========================
+#  自适应并发控制器
+# =========================
+class AdaptiveConcurrencyController:
+    """
+    非精细型的自适应并发：
+    - 记录全局调用次数 / 错误次数 / 总耗时
+    - 若平均耗时 >= latency_threshold 或 错误率 >= error_threshold，则把并发砍半
+    - 若平均耗时较低且错误率很低，则缓慢提升并发
+    """
+    def __init__(
+        self,
+        min_workers: int = 1,
+        max_workers: int = 8,
+        latency_threshold_s: float = 100.0,
+        error_threshold: float = 0.2,
+    ):
+        self.min_workers = max(1, int(min_workers))
+        self.max_workers = max(self.min_workers, int(max_workers))
+        self.latency_threshold_s = float(latency_threshold_s)
+        self.error_threshold = float(error_threshold)
+
+        self._lock = threading.Lock()
+        self._total_calls = 0
+        self._error_calls = 0
+        self._total_latency = 0.0
+
+    def register_call(self, success: bool, elapsed_s: float) -> None:
+        with self._lock:
+            self._total_calls += 1
+            if not success:
+                self._error_calls += 1
+            self._total_latency += float(elapsed_s)
+
+    def stats(self) -> Tuple[int, float, float]:
+        with self._lock:
+            if self._total_calls == 0:
+                return 0, 0.0, 0.0
+            err_rate = self._error_calls / self._total_calls
+            avg_lat = self._total_latency / self._total_calls
+            return self._total_calls, err_rate, avg_lat
+
+    def suggest_workers(self, default_workers: int) -> int:
+        total, err_rate, avg_lat = self.stats()
+        default_workers = max(self.min_workers, min(int(default_workers), self.max_workers))
+
+        if total == 0:
+            return default_workers
+
+        workers = default_workers
+
+        # 高延迟或高错误率 → 缩减并发
+        if avg_lat >= self.latency_threshold_s or err_rate >= self.error_threshold:
+            workers = max(self.min_workers, workers // 2 or 1)
+        # 延迟健康且错误率低 → 温和提升一点并发
+        elif avg_lat <= self.latency_threshold_s * 0.6 and err_rate <= self.error_threshold * 0.5:
+            if workers < self.max_workers:
+                workers += 1
+
+        return max(self.min_workers, min(workers, self.max_workers))
+
 
 # =========================
-#  Thread-local LLM：每线程一个 client + 控制台摘要 + JSONL全文
+#  Thread-local LLM：每线程一个 client + 控制台摘要 + JSONL全文 + 重试 + 自适应并发统计
 # =========================
 class ThreadLocalLLM:
     """
@@ -174,6 +239,7 @@ class ThreadLocalLLM:
     - 控制台打印摘要行（不打印全文）
     - 完整 system/user/assistant 写入 JSONL 文件
     - 内置网络重试：指数退避 + jitter；对 429/5xx/超时/断连等重试
+    - 可选挂载 AdaptiveConcurrencyController，用于阶段内动态调节并发
     """
     def __init__(
         self,
@@ -188,6 +254,7 @@ class ThreadLocalLLM:
         retry_jitter: float = 0.2,
         retry_status_codes: Optional[List[int]] = None,
         fail_fast: bool = True,
+        monitor: Optional[AdaptiveConcurrencyController] = None,
     ):
         self.base_url = base_url
         self.api_key = api_key
@@ -208,13 +275,15 @@ class ThreadLocalLLM:
         self.retry_status_codes = retry_status_codes or [408, 409, 425, 429, 500, 502, 503, 504, 522, 524]
         self.fail_fast = bool(fail_fast)
 
+        # 自适应并发监控
+        self.monitor = monitor
+
     def set_run_context(self, tracker: ProgressTracker, writer: JSONLTraceWriter) -> None:
         self.tracker = tracker
         self.writer = writer
 
     def _get_client(self) -> OpenAI:
         if not hasattr(self.local, "client"):
-            # 显式传 http_client，规避某些环境下的 proxies 参数不兼容问题
             http = httpx.Client(timeout=httpx.Timeout(self.timeout_sec), trust_env=True)
             self.local.http = http
             self.local.client = OpenAI(base_url=self.base_url, api_key=self.api_key, http_client=http)
@@ -222,7 +291,6 @@ class ThreadLocalLLM:
 
     @staticmethod
     def _get_status_code(err: Exception) -> Optional[int]:
-        # openai SDK 通常把状态码放在 err.status_code 或 err.response.status_code
         sc = getattr(err, "status_code", None)
         if isinstance(sc, int):
             return sc
@@ -233,16 +301,13 @@ class ThreadLocalLLM:
         return None
 
     def _should_retry(self, err: Exception) -> bool:
-        # 1) httpx 网络/超时类
         if isinstance(err, (httpx.TimeoutException, httpx.NetworkError, httpx.TransportError, httpx.ReadError, httpx.ConnectError)):
             return True
 
-        # 2) OpenAI SDK/HTTP 状态码类（429/5xx/408 等）
         sc = self._get_status_code(err)
         if sc is not None:
             return sc in set(self.retry_status_codes)
 
-        # 3) 兜底：通过错误消息判断一些常见的临时网络问题
         msg = (str(err) or "").lower()
         transient_keywords = [
             "timed out", "timeout", "connection reset", "connection aborted", "temporary failure",
@@ -251,10 +316,8 @@ class ThreadLocalLLM:
         return any(k in msg for k in transient_keywords)
 
     def _sleep_backoff(self, attempt_index: int) -> float:
-        # attempt_index 从 0 开始：0,1,2...
         base = self.retry_base_sleep_sec * (2 ** attempt_index)
         base = min(base, self.retry_max_sleep_sec)
-        # jitter: +- retry_jitter 比例
         if self.retry_jitter > 0:
             base *= (1.0 + random.uniform(-self.retry_jitter, self.retry_jitter))
         return max(0.0, base)
@@ -305,6 +368,10 @@ class ThreadLocalLLM:
                 except Exception:
                     parsed = None
 
+                # 自适应监控：记录一次成功调用
+                if self.monitor is not None:
+                    self.monitor.register_call(True, dt)
+
                 # 成功：tick 进度
                 stage = trace.get("stage")
                 if self.tracker and stage:
@@ -342,6 +409,10 @@ class ThreadLocalLLM:
                 last_err = e
                 is_last = (attempt == max_attempts - 1)
 
+                # 自适应监控：记录一次失败调用
+                if self.monitor is not None:
+                    self.monitor.register_call(False, dt)
+
                 # 失败也要写 JSONL（完整信息 + 堆栈）
                 if self.writer:
                     self.writer.write({
@@ -374,27 +445,30 @@ class ThreadLocalLLM:
                     error_status_code=self._get_status_code(e),
                 )
 
-                # 最后一次：结束
                 if is_last:
-                    # 让 stage 进度别“卡在 rem>0”（即使失败也算这个任务结束）
                     stage = trace.get("stage")
                     if self.tracker and stage:
                         self.tracker.tick(stage)
 
                     if self.fail_fast:
                         raise RuntimeError(f"LLM 调用失败（已重试 {attempt+1}/{max_attempts} 次）：{e}") from e
-                    # fail_fast=False：返回空结果，让上层用默认值继续跑
                     return "", None
 
-                # 继续重试：退避等待
                 sleep_s = self._sleep_backoff(attempt)
                 time.sleep(sleep_s)
 
-        # 理论上不会到这
         if self.fail_fast and last_err:
             raise RuntimeError(f"LLM 调用失败：{last_err}") from last_err
         return "", None
 
+    # 为了兼容旧代码，还挂一个 logger 属性
+    @property
+    def logger(self) -> logging.Logger:
+        return self._logger
+
+    @logger.setter
+    def logger(self, value: logging.Logger) -> None:
+        self._logger = value
 
 
 # =========================
@@ -409,9 +483,6 @@ def sys_json_only() -> str:
 
 
 def _persona_block(persona_text: Optional[str]) -> str:
-    """
-    强化 persona：把 persona 变成“你是谁 + 你怎么感受/怎么打分”的硬约束。
-    """
     if not persona_text:
         return ""
     return "".join([
@@ -426,9 +497,6 @@ def _persona_block(persona_text: Optional[str]) -> str:
 
 
 def _discussion_block(discussion_tail: List[str]) -> str:
-    """
-    强化讨论：要求仔细思考、提炼要点，并影响分数；同时鼓励反对意见避免羊群效应。
-    """
     disc = "\n".join([f"- {m}" for m in discussion_tail]) if discussion_tail else "(none)"
     return "".join([
         "GROUP DISCUSSION (latest messages):\n",
@@ -687,9 +755,8 @@ def prompt_finalize_after_discussion(
     return sys_json_only(), "".join(parts)
 
 
-
 # =========================
-#  评测方法（合并在 runner.py 内）
+#  评测方法（单 agent 基线评测）
 # =========================
 def run_aggregation_agent(
     llm: ThreadLocalLLM,
@@ -716,7 +783,13 @@ def run_aggregation_agent(
             temperature=float(cfg.llm.temperature),
             top_p=float(cfg.llm.top_p),
             max_tokens=int(cfg.llm.max_tokens),
-            trace={"book": meta["book_name"], "agent": agent_uuid, "method": "aggregation", "stage": "aggregation_chapter", "chapter": chapter_idx},
+            trace={
+                "book": meta["book_name"],
+                "agent": agent_uuid,
+                "method": "aggregation",
+                "stage": "aggregation_chapter",
+                "chapter": chapter_idx,
+            },
         )
         obj = parsed or {}
 
@@ -733,10 +806,21 @@ def run_aggregation_agent(
 
         prev_summaries.append(plot_summary)
         scores.append(score)
-        evals.append({"chapter_index": chapter_idx, "score": score, "plot_summary": plot_summary, "comment": comment})
+        evals.append(
+            {
+                "chapter_index": chapter_idx,
+                "score": score,
+                "plot_summary": plot_summary,
+                "comment": comment,
+            }
+        )
 
     pre_score = round(sum(scores) / max(1, len(scores)), score_decimals)
-    stance = f"My current impression is around {pre_score:.1f}. Latest thought: {last_comment}" if last_comment else f"My current impression is around {pre_score:.1f}."
+    stance = (
+        f"My current impression is around {pre_score:.1f}. Latest thought: {last_comment}"
+        if last_comment
+        else f"My current impression is around {pre_score:.1f}."
+    )
     return evals, pre_score, stance
 
 
@@ -755,7 +839,6 @@ def run_incremental_agent(
     - pre_score：所有 step score 的平均（全文平均分）
     - last_state：最后一章后的 summary/review/score（用于无讨论时 final_review）
     """
-
     prev_summary = ""
     prev_review = ""
     prev_score = 3.0
@@ -786,7 +869,6 @@ def run_incremental_agent(
         )
         obj = parsed or {}
 
-        # ✅ 关键：字段缺失/空字符串时，保留旧状态，不要把 prev_* 清空
         new_summary = obj.get("summary", None)
         if new_summary is not None and str(new_summary).strip():
             prev_summary = str(new_summary).strip()
@@ -815,12 +897,12 @@ def run_incremental_agent(
     pre_score = round(sum(scores) / max(1, len(scores)), score_decimals)
     stance = (
         f"My current impression is around {pre_score:.1f}. Latest review: {prev_review}"
-        if prev_review else f"My current impression is around {pre_score:.1f}."
+        if prev_review
+        else f"My current impression is around {pre_score:.1f}."
     )
 
     last_state = {"summary": prev_summary, "review": prev_review, "last_score": prev_score}
     return steps, pre_score, stance, last_state
-
 
 
 def build_summary_agent(
@@ -844,7 +926,13 @@ def build_summary_agent(
             temperature=float(cfg.llm.temperature),
             top_p=float(cfg.llm.top_p),
             max_tokens=int(cfg.llm.max_tokens),
-            trace={"book": meta["book_name"], "agent": agent_uuid, "method": "summary_based", "stage": "summary_incremental", "chapter": chapter_idx},
+            trace={
+                "book": meta["book_name"],
+                "agent": agent_uuid,
+                "method": "summary_based",
+                "stage": "summary_incremental",
+                "chapter": chapter_idx,
+            },
         )
         obj = parsed or {}
         global_summary = {
@@ -872,9 +960,6 @@ def _persona_text(persona_raw: Dict[str, Any]) -> str:
 
 
 def _get_int(cfg: Any, path: str, default: int) -> int:
-    """
-    从 cfg 中安全取整型值，例如 path="experiment.n_agents"
-    """
     cur = cfg
     for part in path.split("."):
         if not hasattr(cur, part):
@@ -901,7 +986,6 @@ def _safe_cfg_dump(cfg: Any) -> Dict[str, Any]:
             return cfg.model_dump()
         except Exception:
             pass
-    # 退化：只取关键字段
     out: Dict[str, Any] = {}
     try:
         out["llm"] = {
@@ -914,9 +998,10 @@ def _safe_cfg_dump(cfg: Any) -> Dict[str, Any]:
             "timeout_sec": getattr(cfg.llm, "timeout_sec", None),
         }
         out["paths"] = {
-            "personas_json": getattr(cfg.paths, "personas_json", None),
-            "books_root": getattr(cfg.paths, "books_root", None),
-            "output_root": getattr(cfg.paths, "output_root", None),
+            "personas_json": getattr(getattr(cfg, "paths", object()), "personas_json", None),
+            "books_root": getattr(getattr(cfg, "paths", object()), "books_root", None),
+            "output_root": getattr(getattr(cfg, "paths", object()), "output_root", None),
+            "base_eval_root": getattr(getattr(cfg, "paths", object()), "base_eval_root", None),
         }
         out["experiment"] = {
             "method": getattr(cfg.experiment, "method", None),
@@ -928,6 +1013,7 @@ def _safe_cfg_dump(cfg: Any) -> Dict[str, Any]:
             "n_agents": getattr(cfg.experiment, "n_agents", None),
             "score_decimals": getattr(cfg.experiment, "score_decimals", None),
             "discussion_affects_score": getattr(cfg.experiment, "discussion_affects_score", None),
+            "chapter_batch_size": getattr(cfg.experiment, "chapter_batch_size", None),
         }
     except Exception:
         pass
@@ -935,45 +1021,20 @@ def _safe_cfg_dump(cfg: Any) -> Dict[str, Any]:
 
 
 # =========================
-#  主流程：run_all_books / run_one_book
+#  字符串工具：文件名清洗
 # =========================
-# abandoned:
-# def run_all_books(cfg: Any, _unused_llm: Any = None) -> None:
-#     """
-#     兼容 main.py 原来的 run_all_books(cfg, llm) 调用：
-#     runner 内部自己创建 thread-local llm（确保多线程安全 + 全量 JSONL 日志）
-#     """
-#     output_root = str(cfg.paths.output_root)
-#     os.makedirs(output_root, exist_ok=True)
-#
-#     log_dir = os.path.join(output_root, "logs")
-#     logger = setup_logger(log_dir, also_file=True)
-#
-#     api_key = _get_api_key_from_env(cfg)
-#     llm = ThreadLocalLLM(
-#         base_url=str(cfg.llm.base_url),
-#         api_key=api_key,
-#         model=str(cfg.llm.model),
-#         timeout_sec=int(cfg.llm.timeout_sec),
-#         logger=logger,
-#     )
-#
-#     personas_raw = read_json(str(cfg.paths.personas_json))
-#     n_agents = _get_int(cfg, "experiment.n_agents", 8)
-#     personas_raw = personas_raw[:n_agents]
-#
-#     books_root = str(cfg.paths.books_root)
-#     book_dirs = list_book_dirs(books_root)
-#
-#     logger.info("=== RUN START === books=%d | n_agents=%d | method=%s", len(book_dirs), n_agents, str(cfg.experiment.method))
-#
-#     for book_dir in book_dirs:
-#         meta = read_json(os.path.join(book_dir, "book_metadata.json"))
-#         chapters = read_json(os.path.join(book_dir, "chapters.json"))
-#         run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
-#
-#     logger.info("=== RUN END ===")
+def sanitize_name(s: str, max_len: int = 180) -> str:
+    bad = '<>:"/\\|?*'
+    s = (s or "").strip()
+    for ch in bad:
+        s = s.replace(ch, "_")
+    s = s.strip().strip(".")
+    return s[:max_len] if len(s) > max_len else s
 
+
+# =========================
+#  书本结构适配
+# =========================
 def _normalize_book_record(book_record: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     把你现在的输入格式：
@@ -992,25 +1053,180 @@ def _normalize_book_record(book_record: Dict[str, Any]) -> Tuple[Dict[str, Any],
     intro = str(md.get("intro", "")).strip()
     author = str(md.get("author", "")).strip()
 
-    # 注意：goodreads_rating / ratings_count 不要喂给模型（防止泄漏真实分数）
     meta = {
         "book_name": title,
         "intro": intro,
         "author": author,
     }
 
-    # 章节按 id 排序，映射到旧字段 Number/text
-    chapters = []
-    for c in sorted(chs, key=lambda x: int(x.get("id", 0) or 0)):
-        chapters.append({
-            "Number": int(c.get("Number", 0) or 0),
-            "title": str(c.get("title", "")).strip(),
-            "text": str(c.get("text", "")),
-        })
+    chapters: List[Dict[str, Any]] = []
+    for c in sorted(chs, key=lambda x: int(x.get("id", x.get("Number", 0)) or 0)):
+        num = c.get("Number", None)
+        if num is None or int(num) == 0:
+            num = c.get("id", 0)
+        chapters.append(
+            {
+                "Number": int(num or 0),
+                "title": str(c.get("title", "")).strip(),
+                "text": str(c.get("text", "")),
+            }
+        )
 
     return meta, chapters
 
 
+# =========================
+#  BaseEval 缓存辅助
+# =========================
+def _get_base_eval_root(cfg: Any) -> Optional[str]:
+    paths = getattr(cfg, "paths", None)
+    if paths is None:
+        return None
+    root = getattr(paths, "base_eval_root", None)
+    return str(root) if root else None
+
+
+def _base_eval_cache_path(
+    cfg: Any,
+    method: str,
+    book_name: str,
+    persona_key: str,
+) -> Optional[str]:
+    root = _get_base_eval_root(cfg)
+    if not root:
+        return None
+    fname = sanitize_name(f"{book_name}__persona={persona_key}.json")
+    return os.path.join(root, method, fname)
+
+
+def _load_base_eval_from_disk(
+    cfg: Any,
+    method: str,
+    book_name: str,
+    persona_key: str,
+) -> Optional[Dict[str, Any]]:
+    path = _base_eval_cache_path(cfg, method, book_name, persona_key)
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        obj = read_json(path)
+        be = obj.get("base_eval")
+        if isinstance(be, dict):
+            return be
+    except Exception:
+        pass
+    return None
+
+
+def _save_base_eval_to_disk(
+    cfg: Any,
+    method: str,
+    book_name: str,
+    persona_key: str,
+    agent_uuid: str,
+    base_eval: Dict[str, Any],
+) -> None:
+    path = _base_eval_cache_path(cfg, method, book_name, persona_key)
+    if not path:
+        return
+    obj = {
+        "book_name": book_name,
+        "method": method,
+        "persona_key": persona_key,
+        "agent_uuid_sample": agent_uuid,
+        "config": _safe_cfg_dump(cfg),
+        "base_eval": base_eval,
+    }
+    write_json(path, obj)
+
+
+def _ensure_base_eval_for_persona(
+    llm: ThreadLocalLLM,
+    cfg: Any,
+    meta: Dict[str, Any],
+    chapters: List[Dict[str, Any]],
+    method: str,
+    persona_text: Optional[str],
+    persona_key: str,
+    agent_uuid: str,
+    score_decimals: int,
+) -> Dict[str, Any]:
+    """
+    确保某本书 / 某方法 / 某 persona_key 的基线评测存在：
+    - 若缓存存在：直接加载
+    - 若不存在：调用对应 run_* 函数评测，然后写入缓存
+    返回结构：
+    {
+      "kind": "aggregation" | "incremental" | "summary_based",
+      "payload": ...,
+      "pre_discussion_score": float,
+      "stance": str
+    }
+    """
+    book_name = str(meta.get("book_name", "UNKNOWN"))
+    cached = _load_base_eval_from_disk(cfg, method, book_name, persona_key)
+    if isinstance(cached, dict) and "kind" in cached and "payload" in cached:
+        return cached
+
+    # 需要真正跑一遍
+    if method == "aggregation":
+        evals, pre_score, stance = run_aggregation_agent(
+            llm=llm,
+            cfg=cfg,
+            meta=meta,
+            chapters=chapters,
+            agent_uuid=agent_uuid,
+            persona_text=persona_text,
+            score_decimals=score_decimals,
+        )
+        base_eval = {
+            "kind": "aggregation",
+            "payload": evals,
+            "pre_discussion_score": float(pre_score),
+            "stance": stance,
+        }
+    elif method == "incremental":
+        steps, pre_score, stance, last_state = run_incremental_agent(
+            llm=llm,
+            cfg=cfg,
+            meta=meta,
+            chapters=chapters,
+            agent_uuid=agent_uuid,
+            persona_text=persona_text,
+            score_decimals=score_decimals,
+        )
+        base_eval = {
+            "kind": "incremental",
+            "payload": {"steps": steps, "last_state": last_state},
+            "pre_discussion_score": float(pre_score),
+            "stance": stance,
+        }
+    elif method == "summary_based":
+        gs = build_summary_agent(
+            llm=llm,
+            cfg=cfg,
+            meta=meta,
+            chapters=chapters,
+            agent_uuid=agent_uuid,
+            persona_text=persona_text,
+        )
+        stance = "I have formed a coherent view based on the full summary of the novel."
+        base_eval = {
+            "kind": "summary_based",
+            "payload": gs,
+            "pre_discussion_score": 3.0,
+            "stance": stance,
+        }
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+    _save_base_eval_to_disk(cfg, method, book_name, persona_key, agent_uuid, base_eval)
+    return base_eval
+
+
+# =========================
+#  外部入口：评测“单本书”
+# =========================
 def evaluate_single_book(
     cfg: Any,
     llm: ThreadLocalLLM,
@@ -1018,12 +1234,6 @@ def evaluate_single_book(
     book_record: Dict[str, Any],
     personas_raw: List[Dict[str, Any]],
 ) -> None:
-    """
-    runner 评测“单本书”
-    - book_record: 你的新结构（含 metadata + chapter）
-    - personas_raw: persona 列表
-    输出仍然落在 cfg.paths.output_root 下（原始 json + logs/jsonl）
-    """
     meta, chapters = _normalize_book_record(book_record)
     run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
 
@@ -1036,23 +1246,32 @@ def run_one_book(
     chapters: List[Dict[str, Any]],
     personas_raw: List[Dict[str, Any]],
 ) -> None:
+    """
+    新版流程（你的需求）：
+    - STEP A（全局基线 / 原 STAGE2）：对所有 persona 或 nopersona 做基线评测（aggregation / incremental / summary_based）
+      并写入 base_eval_root 缓存。
+    - STEP B（兴趣筛选 / 原 STAGE1）：根据 metadata + persona 做 interest_filter，决定哪些 persona 进入讨论。
+    - STEP C（讨论 / 原 STAGE3）：只对 kept personas 进行多轮讨论。
+    - STEP D（讨论后最终打分 / 原 STAGE4）：summary_based 使用 summary_final，其余方法可选使用 finalize_after_discussion。
+    - 输出：只写原始数据（per-agent 基线 + interest + 讨论 + final_score），不再在这里计算 book_level 的 aggregate score。
+    """
+
     method = str(cfg.experiment.method)
     use_persona = _get_bool(cfg, "experiment.use_persona", True)
     use_discussion = _get_bool(cfg, "experiment.use_discussion", False)
     use_interest_filter = _get_bool(cfg, "experiment.use_interest_filter", True)
-    discussion_affects_score = _get_bool(cfg, "experiment.discussion_affects_score", True)
 
-    # 并发：默认 workers=min(n_agents, 8)，也可在 config 里加 concurrency.max_workers
     n_agents = len(personas_raw)
-    max_workers = _get_int(cfg, "concurrency.max_workers", min(8, n_agents)) if hasattr(cfg, "concurrency") else min(8, n_agents)
-    max_workers = max(1, min(max_workers, 32))  # 再给一个硬上限，避免误配
-
+    max_workers_cfg = _get_int(cfg, "concurrency.max_workers", min(8, n_agents))
     rounds = _get_int(cfg, "experiment.discussion_rounds", 2)
     window = _get_int(cfg, "experiment.discussion_window", 10)
     score_decimals = _get_int(cfg, "experiment.score_decimals", 1)
 
     book_name = str(meta.get("book_name", "UNKNOWN"))
-    logger.info(">>> BOOK START: %s | method=%s | agents=%d | workers=%d", book_name, method, n_agents, max_workers)
+    logger.info(
+        ">>> BOOK START: %s | method=%s | agents=%d | max_workers_cfg=%d",
+        book_name, method, n_agents, max_workers_cfg
+    )
 
     # 每本书一个 tracker + JSONL（完整对话日志）
     tracker = ProgressTracker()
@@ -1062,25 +1281,143 @@ def run_one_book(
     llm.set_run_context(tracker, writer)
     logger.info("FULL TRACE(JSONL): %s", jsonl_path)
 
-    # -------------------------
-    # STAGE 1: 兴趣筛选（并发）
-    # -------------------------
+    # -----------------------------------------------------
+    # STEP A: 基线评测（对应原 STAGE2，但对所有 persona / nopersona，一次性跑完）
+    # -----------------------------------------------------
+    base_payload: Dict[str, Dict[str, Any]] = {}
+    pre_scores: Dict[str, float] = {}
+    stances: Dict[str, str] = {}
+
+    if use_persona:
+        personas_for_base = personas_raw
+    else:
+        personas_for_base = personas_raw[:1] if personas_raw else []
+
+    n_eval_agents = len(personas_for_base)
+    n_chapters = len(chapters)
+
+    if n_eval_agents > 0 and n_chapters > 0:
+        monitor = getattr(llm, "monitor", None)
+        default_workers = max(1, min(max_workers_cfg, n_eval_agents))
+        if isinstance(monitor, AdaptiveConcurrencyController):
+            workers = monitor.suggest_workers(default_workers)
+        else:
+            workers = default_workers
+        workers = max(1, min(workers, n_eval_agents))
+
+        logger.info(
+            "STAGE START: base_eval | method=%s | eval_agents=%d | chapters=%d | workers=%d",
+            method, n_eval_agents, n_chapters, workers
+        )
+
+        def persona_cache_key(p: Dict[str, Any]) -> str:
+            if use_persona:
+                return str(p.get("uuid", "unknown"))
+            return "nopersona"
+
+        # 仅统计“需要实际调用 LLM 的 persona 数量”用于 tracker
+        to_eval: List[Dict[str, Any]] = []
+        base_root = _get_base_eval_root(cfg)
+        if base_root:
+            for p in personas_for_base:
+                pk = persona_cache_key(p)
+                path = _base_eval_cache_path(cfg, method, book_name, pk)
+                if not (path and os.path.exists(path)):
+                    to_eval.append(p)
+        else:
+            to_eval = list(personas_for_base)
+
+        # 用真实 trace stage 名来设 total，保证 snapshot/tick 能命中
+        method_stage_map = {
+            "aggregation": "aggregation_chapter",
+            "incremental": "incremental_update",
+            "summary_based": "summary_incremental",
+        }
+        base_call_stage = method_stage_map.get(method, "base_eval")
+
+        if to_eval:
+            tracker.set_total(base_call_stage, len(to_eval) * n_chapters)
+
+        def _base_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, Dict[str, Any]]:
+            uid = str(persona_raw.get("uuid"))
+            pk = persona_cache_key(persona_raw)
+            persona_txt = _persona_text(persona_raw) if use_persona else None
+            rec = _ensure_base_eval_for_persona(
+                llm=llm,
+                cfg=cfg,
+                meta=meta,
+                chapters=chapters,
+                method=method,
+                persona_text=persona_txt,
+                persona_key=pk,
+                agent_uuid=uid,
+                score_decimals=score_decimals,
+            )
+            return uid, pk, rec
+
+        base_result_by_key: Dict[str, Dict[str, Any]] = {}
+
+        if n_eval_agents == 1:
+            uid, pk, rec = _base_worker(personas_for_base[0])
+            base_result_by_key[pk] = rec
+            base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
+            pre_scores[uid] = float(rec["pre_discussion_score"])
+            stances[uid] = rec["stance"]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = [ex.submit(_base_worker, p) for p in personas_for_base]
+                for fu in as_completed(futures):
+                    uid, pk, rec = fu.result()
+                    base_result_by_key[pk] = rec
+                    base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
+                    pre_scores[uid] = float(rec["pre_discussion_score"])
+                    stances[uid] = rec["stance"]
+
+        logger.info("STAGE DONE: base_eval | method=%s", method)
+
+        # persona 关闭时：把 nopersona 的结果复制到所有 agent 上（你说的“乘以智能体数”）
+        if not use_persona and base_result_by_key:
+            shared = base_result_by_key.get("nopersona")
+            if shared:
+                for p in personas_raw:
+                    uid = str(p.get("uuid"))
+                    base_payload[uid] = {"kind": shared["kind"], "payload": shared["payload"]}
+                    pre_scores[uid] = float(shared["pre_discussion_score"])
+                    stances[uid] = shared["stance"]
+
+    # -----------------------------------------------------
+    # STEP B: 兴趣筛选（对应原 STAGE1）
+    # -----------------------------------------------------
     decisions: Dict[str, Dict[str, Any]] = {}
     if use_interest_filter:
         tracker.set_total("interest_filter", n_agents)
         logger.info("STAGE START: interest_filter | total_tasks=%d", n_agents)
 
+        monitor = getattr(llm, "monitor", None)
+        default_workers = max(1, min(max_workers_cfg, n_agents))
+        if isinstance(monitor, AdaptiveConcurrencyController):
+            workers = monitor.suggest_workers(default_workers)
+        else:
+            workers = default_workers
+        workers = max(1, min(workers, n_agents))
+
         def _interest_worker(persona_raw: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
             uid = str(persona_raw.get("uuid"))
-            persona_text = _persona_text(persona_raw) if use_persona else None
-            system, user = prompt_interest_filter(meta, persona_text)
+            persona_txt = _persona_text(persona_raw) if use_persona else None
+            system, user = prompt_interest_filter(meta, persona_txt)
             _, parsed = llm.chat_json(
                 system=system,
                 user=user,
                 temperature=float(cfg.llm.temperature),
                 top_p=float(cfg.llm.top_p),
                 max_tokens=int(cfg.llm.max_tokens),
-                trace={"book": book_name, "agent": uid, "method": method, "stage": "interest_filter", "chapter": None},
+                trace={
+                    "book": book_name,
+                    "agent": uid,
+                    "method": method,
+                    "stage": "interest_filter",
+                    "chapter": None,
+                },
             )
             obj = parsed or {}
             obj.setdefault("keep", True)
@@ -1088,7 +1425,7 @@ def run_one_book(
             obj.setdefault("reason", "")
             return uid, obj
 
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
             futures = [ex.submit(_interest_worker, p) for p in personas_raw]
             for fu in as_completed(futures):
                 uid, obj = fu.result()
@@ -1096,111 +1433,70 @@ def run_one_book(
     else:
         for p in personas_raw:
             uid = str(p.get("uuid"))
-            decisions[uid] = {"keep": True, "interest_score": 50.0, "reason": "interest_filter_disabled"}
+            decisions[uid] = {
+                "keep": True,
+                "interest_score": 50.0,
+                "reason": "interest_filter_disabled",
+            }
 
     kept_personas = [p for p in personas_raw if bool(decisions.get(str(p.get("uuid")), {}).get("keep", True))]
     filtered_pre = len(personas_raw) - len(kept_personas)
+    logger.info(
+        "STAGE DONE: interest_filter | kept=%d/%d | filtered_pre_read=%d",
+        len(kept_personas), n_agents, filtered_pre
+    )
 
-    logger.info("STAGE DONE: interest_filter | kept=%d/%d | filtered_pre_read=%d", len(kept_personas), n_agents, filtered_pre)
-
-    # -------------------------
-    # STAGE 2: 基线评测（并发，且每章会产生多次 LLM 调用 → tracker 按总调用数计）
-    # -------------------------
-    base_payload: Dict[str, Any] = {}
-    pre_scores: Dict[str, float] = {}
-    stances: Dict[str, str] = {}
+    # -----------------------------------------------------
+    # STEP C: 讨论（原 STAGE3）——已禁用多线程，顺序执行
+    # -----------------------------------------------------
+    global_messages: List[str] = []
+    per_agent_discussion: Dict[str, List[Dict[str, Any]]] = {
+        str(p.get("uuid")): [] for p in kept_personas
+    }
 
     n_kept = len(kept_personas)
-    n_chapters = len(chapters)
-
-    if n_kept > 0:
-        if method == "aggregation":
-            tracker.set_total("aggregation_chapter", n_kept * n_chapters)
-            logger.info("STAGE START: aggregation_chapter | total_tasks=%d", n_kept * n_chapters)
-        elif method == "incremental":
-            tracker.set_total("incremental_update", n_kept * n_chapters)
-            logger.info("STAGE START: incremental_update | total_tasks=%d", n_kept * n_chapters)
-        elif method == "summary_based":
-            tracker.set_total("summary_incremental", n_kept * n_chapters)
-            logger.info("STAGE START: summary_incremental | total_tasks=%d", n_kept * n_chapters)
-        else:
-            writer.close()
-            raise ValueError(f"Unknown method: {method}")
-
-        def _eval_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, Any, float, str]:
-            uid = str(persona_raw.get("uuid"))
-            persona_text = _persona_text(persona_raw) if use_persona else None
-
-            if method == "aggregation":
-                evals, pre_score, stance = run_aggregation_agent(
-                    llm=llm, cfg=cfg, meta=meta, chapters=chapters,
-                    agent_uuid=uid, persona_text=persona_text, score_decimals=score_decimals
-                )
-                return uid, "aggregation", evals, float(pre_score), stance
-
-            if method == "incremental":
-                steps, pre_score, stance, last_state = run_incremental_agent(
-                    llm=llm, cfg=cfg, meta=meta, chapters=chapters,
-                    agent_uuid=uid, persona_text=persona_text,
-                    score_decimals=score_decimals
-                )
-                return uid, "incremental", {"steps": steps, "last_state": last_state}, float(pre_score), stance
-
-            if method == "summary_based":
-                gs = build_summary_agent(
-                    llm=llm, cfg=cfg, meta=meta, chapters=chapters,
-                    agent_uuid=uid, persona_text=persona_text
-                )
-                # pre_score 先占位，最终评分在 STAGE 4 的 summary_final
-                stance = "I have formed a coherent view based on the full summary of the novel."
-                return uid, "summary_based", gs, 3.0, stance
-
-            raise ValueError(method)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = [ex.submit(_eval_worker, p) for p in kept_personas]
-            for fu in as_completed(futures):
-                uid, kind, payload, pre_score, stance = fu.result()
-                base_payload[uid] = {"kind": kind, "payload": payload}
-                pre_scores[uid] = round(clamp_score(float(pre_score)), score_decimals)
-                stances[uid] = stance
-
-        logger.info("STAGE DONE: base_evaluation | kept_agents=%d", n_kept)
-
-    # -------------------------
-    # STAGE 3: 讨论（按轮 barrier，每轮一个 stage，保证“最新 n 条”语义一致）
-    # -------------------------
-    global_messages: List[str] = []
-    per_agent_discussion: Dict[str, List[Dict[str, Any]]] = {str(p.get("uuid")): [] for p in kept_personas}
 
     if use_discussion and n_kept > 0:
         for r in range(1, rounds + 1):
             stage_name = f"discussion_round_{r}"
             tracker.set_total(stage_name, n_kept)
-            logger.info("STAGE START: %s | total_tasks=%d | visible_window=%d", stage_name, n_kept, window)
 
-            tail = global_messages[-window:]  # 本轮所有 agent 看到同一份 tail（barrier）
+            # 讨论阶段不再使用多线程，强制顺序执行，避免端点在高压下“炸锅”
+            logger.info(
+                "STAGE START: %s | total_tasks=%d | visible_window=%d | workers=%d",
+                stage_name, n_kept, window, 1
+            )
+
+            tail = global_messages[-window:]
 
             def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str]:
                 uid = str(persona_raw.get("uuid"))
-                persona_text = _persona_text(persona_raw) if use_persona else None
+                persona_txt = _persona_text(persona_raw) if use_persona else None
                 stance = stances.get(uid, "My impression is forming.")
-                system, user = prompt_discussion_message(meta, persona_text, stance, tail)
+                system, user = prompt_discussion_message(meta, persona_txt, stance, tail)
                 _, parsed = llm.chat_json(
                     system=system,
                     user=user,
                     temperature=float(cfg.llm.temperature),
                     top_p=float(cfg.llm.top_p),
                     max_tokens=int(cfg.llm.max_tokens),
-                    trace={"book": book_name, "agent": uid, "method": method, "stage": stage_name, "chapter": None},
+                    trace={
+                        "book": book_name,
+                        "agent": uid,
+                        "method": method,
+                        "stage": stage_name,
+                        "chapter": None,
+                    },
                 )
                 obj = parsed or {}
                 msg = str(obj.get("message", "")).strip() or "(no message)"
                 return uid, msg
 
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = [ex.submit(_disc_worker, p) for p in kept_personas]
-                round_msgs = [fu.result() for fu in as_completed(futures)]
+            # 🔴 这里改成顺序调用，按 persona 顺序一个个来
+            round_msgs: List[Tuple[str, str]] = []
+            for persona_raw in kept_personas:
+                uid, msg = _disc_worker(persona_raw)
+                round_msgs.append((uid, msg))
 
             # 固定顺序合并，保证可复现
             for uid, msg in sorted(round_msgs, key=lambda x: x[0]):
@@ -1209,11 +1505,10 @@ def run_one_book(
 
             logger.info("STAGE DONE: %s | total_messages=%d", stage_name, len(global_messages))
 
-    # -------------------------
-    # STAGE 4: 最终评分（并发）
-    # - summary_based：无论是否讨论，都用 summary_final（输入 global_summary + 最新讨论n条）
-    # - 其他方法：若讨论开启，用 finalize_after_discussion；否则不额外调用 LLM（直接用 pre_scores）
-    # -------------------------
+
+    # -----------------------------------------------------
+    # STEP D: 最终打分（原 STAGE4）
+    # -----------------------------------------------------
     post_scores: Dict[str, float] = {}
     final_reviews: Dict[str, str] = {}
 
@@ -1221,22 +1516,46 @@ def run_one_book(
 
     if n_kept > 0:
         if method == "summary_based":
-            tracker.set_total("summary_final", n_kept)
-            logger.info("STAGE START: summary_final | total_tasks=%d | visible_window=%d", n_kept, window)
+            stage_name = "summary_final"
+            tracker.set_total(stage_name, n_kept)
+
+            monitor = getattr(llm, "monitor", None)
+            default_workers = max(1, min(max_workers_cfg, n_kept))
+            if isinstance(monitor, AdaptiveConcurrencyController):
+                workers = monitor.suggest_workers(default_workers)
+            else:
+                workers = default_workers
+            workers = max(1, min(workers, n_kept))
+
+            logger.info(
+                "STAGE START: summary_final | total_tasks=%d | visible_window=%d | workers=%d",
+                n_kept, window, workers
+            )
 
             def _summary_final_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
                 uid = str(persona_raw.get("uuid"))
-                persona_text = _persona_text(persona_raw) if use_persona else None
+                persona_txt = _persona_text(persona_raw) if use_persona else None
                 gs = base_payload[uid]["payload"]
 
-                system, user = prompt_summary_final(meta, gs, persona_text, discussion_tail=disc_tail if use_discussion else [])
+                system, user = prompt_summary_final(
+                    meta,
+                    gs,
+                    persona_txt,
+                    discussion_tail=disc_tail if use_discussion else [],
+                )
                 _, parsed = llm.chat_json(
                     system=system,
                     user=user,
                     temperature=float(cfg.llm.temperature),
                     top_p=float(cfg.llm.top_p),
                     max_tokens=int(cfg.llm.max_tokens),
-                    trace={"book": book_name, "agent": uid, "method": method, "stage": "summary_final", "chapter": None},
+                    trace={
+                        "book": book_name,
+                        "agent": uid,
+                        "method": method,
+                        "stage": "summary_final",
+                        "chapter": None,
+                    },
                 )
                 obj = parsed or {}
                 critique = str(obj.get("critique", "")).strip()
@@ -1247,33 +1566,51 @@ def run_one_book(
                 score = round(clamp_score(score), score_decimals)
                 return uid, score, critique
 
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = [ex.submit(_summary_final_worker, p) for p in kept_personas]
                 for fu in as_completed(futures):
                     uid, sc, critique = fu.result()
-                    pre_scores[uid] = sc
+                    pre_scores[uid] = sc  # 对 summary_based 来说，最终得分就是这里的 score
                     final_reviews[uid] = critique
 
             logger.info("STAGE DONE: summary_final")
-
         else:
             if use_discussion:
-                tracker.set_total("finalize_after_discussion", n_kept)
-                logger.info("STAGE START: finalize_after_discussion | total_tasks=%d | visible_window=%d", n_kept, window)
+                stage_name = "finalize_after_discussion"
+                tracker.set_total(stage_name, n_kept)
+
+                monitor = getattr(llm, "monitor", None)
+                default_workers = max(1, min(max_workers_cfg, n_kept))
+                if isinstance(monitor, AdaptiveConcurrencyController):
+                    workers = monitor.suggest_workers(default_workers)
+                else:
+                    workers = default_workers
+                workers = max(1, min(workers, n_kept))
+
+                logger.info(
+                    "STAGE START: finalize_after_discussion | total_tasks=%d | visible_window=%d | workers=%d",
+                    n_kept, window, workers
+                )
 
                 def _finalize_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
                     uid = str(persona_raw.get("uuid"))
-                    persona_text = _persona_text(persona_raw) if use_persona else None
+                    persona_txt = _persona_text(persona_raw) if use_persona else None
                     pre = float(pre_scores.get(uid, 3.0))
 
-                    system, user = prompt_finalize_after_discussion(meta, persona_text, pre, disc_tail)
+                    system, user = prompt_finalize_after_discussion(meta, persona_txt, pre, disc_tail)
                     _, parsed = llm.chat_json(
                         system=system,
                         user=user,
                         temperature=float(cfg.llm.temperature),
                         top_p=float(cfg.llm.top_p),
                         max_tokens=int(cfg.llm.max_tokens),
-                        trace={"book": book_name, "agent": uid, "method": method, "stage": "finalize_after_discussion", "chapter": None},
+                        trace={
+                            "book": book_name,
+                            "agent": uid,
+                            "method": method,
+                            "stage": "finalize_after_discussion",
+                            "chapter": None,
+                        },
                     )
                     obj = parsed or {}
                     try:
@@ -1284,7 +1621,7 @@ def run_one_book(
                     review = str(obj.get("final_review", "")).strip()
                     return uid, fs, review
 
-                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                with ThreadPoolExecutor(max_workers=workers) as ex:
                     futures = [ex.submit(_finalize_worker, p) for p in kept_personas]
                     for fu in as_completed(futures):
                         uid, fs, review = fu.result()
@@ -1293,10 +1630,11 @@ def run_one_book(
 
                 logger.info("STAGE DONE: finalize_after_discussion")
 
-    # -------------------------
-    # 组装输出
-    # -------------------------
+    # -----------------------------------------------------
+    # 输出 struct：只保留原始数据，不在这里做“book_score”之类的评测聚合
+    # -----------------------------------------------------
     agents_out: List[Dict[str, Any]] = []
+
     for p in personas_raw:
         uid = str(p.get("uuid"))
         keep = bool(decisions.get(uid, {}).get("keep", True))
@@ -1311,60 +1649,42 @@ def run_one_book(
                 "reason": str(decisions.get(uid, {}).get("reason", "")),
             } if use_interest_filter else None,
             "discussion": per_agent_discussion.get(uid, []) if (use_discussion and keep) else [],
-            "pre_discussion_score": None,
-            "post_discussion_score": None,
-            "final_review": None,
+            "pre_discussion_score": float(pre_scores.get(uid, None)) if uid in pre_scores else None,
+            "post_discussion_score": float(post_scores.get(uid, None)) if uid in post_scores else None,
+            "final_review": final_reviews.get(uid, None),
             "chapter_evals": None,
             "incremental_steps": None,
             "global_summary": None,
         }
 
-        if not keep:
-            agents_out.append(agent_obj)
-            continue
+        # 挂上基线评测的 payload（所有 persona 都有，而不仅是 kept）
+        if uid in base_payload:
+            kind = base_payload[uid]["kind"]
+            payload = base_payload[uid]["payload"]
 
-        kind = base_payload[uid]["kind"]
-        payload = base_payload[uid]["payload"]
-        if kind == "aggregation":
-            agent_obj["chapter_evals"] = payload
-        elif kind == "incremental":
-            agent_obj["incremental_steps"] = payload["steps"]
-            if (not use_discussion) and (method == "incremental"):
-                agent_obj["final_review"] = str(payload["last_state"].get("review", "")).strip()
-        elif kind == "summary_based":
-            agent_obj["global_summary"] = payload
-
-        agent_obj["pre_discussion_score"] = float(pre_scores.get(uid, None)) if pre_scores.get(uid, None) is not None else None
-
-        if use_discussion and method != "summary_based":
-            agent_obj["post_discussion_score"] = float(post_scores.get(uid, None)) if post_scores.get(uid, None) is not None else None
-            agent_obj["final_review"] = final_reviews.get(uid, "")
-        else:
-            # summary_based：final_reviews 是 critique；aggregation/incremental 无讨论时 final_review 可能为空
-            agent_obj["final_review"] = final_reviews.get(uid, "")
+            if kind == "aggregation":
+                agent_obj["chapter_evals"] = payload
+            elif kind == "incremental":
+                agent_obj["incremental_steps"] = payload.get("steps", [])
+                # 若没有讨论，则可以把最后的 review 当作 final_review 的初始值
+                if (not use_discussion) and method == "incremental" and agent_obj.get("final_review") is None:
+                    agent_obj["final_review"] = str(payload.get("last_state", {}).get("review", "")).strip()
+            elif kind == "summary_based":
+                agent_obj["global_summary"] = payload
 
         agents_out.append(agent_obj)
 
-    kept_scores: List[float] = []
-    for a in agents_out:
-        if not a["kept"]:
-            continue
-        if use_discussion and discussion_affects_score and method != "summary_based":
-            if a["post_discussion_score"] is not None:
-                kept_scores.append(float(a["post_discussion_score"]))
-        else:
-            if a["pre_discussion_score"] is not None:
-                kept_scores.append(float(a["pre_discussion_score"]))
-
-    book_score = round(sum(kept_scores) / max(1, len(kept_scores)), score_decimals) if kept_scores else None
-
     out = {
         "book_name": book_name,
-        "metadata": {"book_name": meta.get("book_name", ""), "intro": meta.get("intro", "")},
+        "metadata": {
+            "book_name": meta.get("book_name", ""),
+            "intro": meta.get("intro", ""),
+            "author": meta.get("author", ""),
+        },
         "config": _safe_cfg_dump(cfg),
         "agents": agents_out,
         "aggregate": {
-            "book_score": book_score,
+            # 不在这里计算 book_score，把聚合评测交给后续脚本
             "n_agents_total": len(personas_raw),
             "n_kept": len(kept_personas),
             "filtered_pre_read": filtered_pre,
@@ -1374,7 +1694,5 @@ def run_one_book(
     out_path = os.path.join(str(cfg.paths.output_root), f"{book_name}_{method}_{ts}.json")
     write_json(out_path, out)
 
-    # 关闭 JSONL writer（防止文件句柄悬挂）
     writer.close()
-
-    logger.info("<<< BOOK END: %s | book_score=%s | out=%s", book_name, str(book_score), out_path)
+    logger.info("<<< BOOK END: %s | out=%s", book_name, out_path)
