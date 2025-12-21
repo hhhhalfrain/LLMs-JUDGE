@@ -41,7 +41,7 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents exp3"
+BATCH_ID = "4agents exp5"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -551,9 +551,7 @@ def run_all_experiments_for_book(
 
         monitor = AdaptiveConcurrencyController(
             min_workers=1,
-            max_workers=int(PER_BOOK_AGENT_WORKERS),
-            latency_threshold_s=100.0,
-            error_threshold=0.2,
+            max_workers=int(PER_BOOK_AGENT_WORKERS)
         )
 
         llm = ThreadLocalLLM(
