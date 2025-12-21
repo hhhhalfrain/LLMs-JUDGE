@@ -110,6 +110,11 @@ class JSONLTraceWriter:
             pass
 
 
+def _truncate(s: str, n: int = 260) -> str:
+    s = str(s or "")
+    return s if len(s) <= n else (s[:n] + " ...")
+
+
 def log_llm_summary_console(
     logger: logging.Logger,
     tracker: Optional[ProgressTracker],
@@ -119,8 +124,11 @@ def log_llm_summary_console(
     assistant_len: int,
     parsed_json: Optional[Dict[str, Any]],
     success: bool,
+    error_msg: Optional[str] = None,
+    error_type: Optional[str] = None,
+    error_status_code: Optional[int] = None,
 ) -> None:
-    """控制台仅输出 trace + 摘要 + 阶段进度"""
+    """控制台仅输出 trace + 摘要 + 阶段进度；若 ERR 则追加错误信息"""
     book = trace.get("book")
     agent = _short_uid(str(trace.get("agent", "")))
     method = trace.get("method")
@@ -135,13 +143,26 @@ def log_llm_summary_console(
     keys = list(parsed_json.keys())[:8] if isinstance(parsed_json, dict) else []
     ok = "OK" if success else "ERR"
 
+    err_part = ""
+    if not success:
+        pieces = []
+        if error_status_code is not None:
+            pieces.append(f"status={error_status_code}")
+        if error_type:
+            pieces.append(str(error_type))
+        if error_msg:
+            pieces.append(_truncate(error_msg))
+        if pieces:
+            err_part = " | err=" + " | ".join(pieces)
+
     logger.info(
         "[%s] book=%s | agent=%s | method=%s | stage=%s | ch=%s | "
-        "stage_progress=%s/%s (rem %s) | %.2fs | in_chars=%d out_chars=%d | parsed_keys=%s",
+        "stage_progress=%s/%s (rem %s) | %.2fs | in_chars=%d out_chars=%d | parsed_keys=%s%s",
         ok, book, agent, method, stage, str(chapter),
         str(done) if done is not None else "-", str(total) if total is not None else "-", str(rem) if rem is not None else "-",
-        elapsed_s, user_len, assistant_len, keys
+        elapsed_s, user_len, assistant_len, keys, err_part
     )
+
 
 
 # =========================
@@ -348,6 +369,9 @@ class ThreadLocalLLM:
                     assistant_len=len(assistant_raw or ""),
                     parsed_json=parsed,
                     success=False,
+                    error_msg=str(e),
+                    error_type=type(e).__name__,
+                    error_status_code=self._get_status_code(e),
                 )
 
                 # 最后一次：结束

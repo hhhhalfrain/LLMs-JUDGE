@@ -33,7 +33,7 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books.json"   # �
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "20251220_2306"
+BATCH_ID = "1"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 
@@ -42,7 +42,7 @@ START_STAGGER_SEC = 1.0
 
 # ✅ 新增：章节合并 batchsize
 # 例如 5：chapter1-5 合并为 1，6-10 合并为 2 ...
-CHAPTER_BATCH_SIZE = 5   # <= 1 表示不合并（保持原样）
+CHAPTER_BATCH_SIZE = 1   # <= 1 表示不合并（保持原样）
 
 # LLM 配置（千问 32B，DashScope compatible）
 LLM_BASE_URL = "https://deepseek.fosu.edu.cn/v1"
@@ -52,17 +52,17 @@ API_KEY_ENV = "QWEN_API_KEY"
 LLM_TEMPERATURE = 0.6
 LLM_TOP_P = 0.9
 LLM_MAX_TOKENS = 800
-LLM_TIMEOUT_SEC = 120
+LLM_TIMEOUT_SEC = 1500
 
 # 请求级重试
-RETRY_MAX_ATTEMPTS = 6
+RETRY_MAX_ATTEMPTS = 1000
 RETRY_BASE_SLEEP_SEC = 1.0
 RETRY_MAX_SLEEP_SEC = 30.0
 RETRY_JITTER = 0.2
 FAIL_FAST = True
 
 # runner 内部：同一本书 agent 并发
-PER_BOOK_AGENT_WORKERS = 1
+PER_BOOK_AGENT_WORKERS = 4
 
 
 # -----------------------------
@@ -370,8 +370,8 @@ def run_one_experiment(
         chapter_batch_size=chapter_batch_size
     )
 
-    # TODO 测试：
-    books = books[:1]
+    # # TODO 测试：
+    # books = books[:1]
 
     exp_root = OUTPUTS_ROOT / run_id
 
