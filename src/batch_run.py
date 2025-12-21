@@ -411,18 +411,43 @@ def build_cfg(
 
 
 def build_experiments_grid() -> List[Tuple]:
+    """
+    规则：
+    - 当 use_persona=False 时，interest_filter 没意义，强制关闭（use_interest_filter=False）。
+    - 同时做去重：避免 ui=True/ui=False 在 up=False 时都映射到 ui=False 造成重复实验。
+    """
     exps: List[Tuple] = []
+    seen = set()
+
     for m in METHODS:
         for up in USE_PERSONA_OPTS:
+            up = bool(up)
             for ud in USE_DISCUSSION_OPTS:
+                ud = bool(ud)
                 for ui in USE_INTEREST_FILTER_OPTS:
+                    # persona 关 -> interest 强制关
+                    ui_eff = bool(ui) if up else False
+
                     for rr in DISCUSSION_ROUNDS_OPTS:
+                        rr = int(rr)
                         for ww in DISCUSSION_WINDOW_OPTS:
+                            ww = int(ww)
                             for na in N_AGENTS_OPTS:
+                                na = int(na)
                                 for sd in SCORE_DECIMALS_OPTS:
+                                    sd = int(sd)
                                     for das in DISCUSSION_AFFECTS_SCORE_OPTS:
-                                        exps.append((m, up, ud, ui, rr, ww, na, sd, das))
+                                        das = bool(das)
+
+                                        key = (m, up, ud, ui_eff, rr, ww, na, sd, das)
+                                        if key in seen:
+                                            continue
+                                        seen.add(key)
+
+                                        exps.append((m, up, ud, ui_eff, rr, ww, na, sd, das))
+
     return exps
+
 
 
 # ============================================================
