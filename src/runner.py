@@ -180,67 +180,125 @@ def log_llm_summary_console(
     )
 
 
-# =========================
-#  自适应并发控制器
-# =========================
+from collections import deque
+import threading
+from typing import Tuple
+
+
 class AdaptiveConcurrencyController:
     """
-    非精细型的自适应并发：
-    - 记录全局调用次数 / 错误次数 / 总耗时
-    - 若平均耗时 >= latency_threshold 或 错误率 >= error_threshold，则把并发砍半
-    - 若平均耗时较低且错误率很低，则缓慢提升并发
+    滑动窗口自适应并发控制器（最近 N 次）：
+
+    维护最近 N=window_size 次调用的 (success, elapsed_s)。
+    - 若 avg_latency > high_latency_s 或 error_rate >= error_rate_high：
+        workers = workers // 2  (不低于 min_workers)
+    - 若 avg_latency < low_latency_s 且窗口内 0 错误：
+        workers += 1  (不超过 max_workers)
+
+    注意：
+    - 这里的并发是“建议值”，你当前代码是在每个 stage 开始前调用 suggest_workers()，
+      所以并发调整会在下一次创建 ThreadPoolExecutor 时生效（不会在 stage 内即时缩容）。
     """
 
     def __init__(
         self,
         min_workers: int = 1,
         max_workers: int = 8,
-        latency_threshold_s: float = 100.0,
-        error_threshold: float = 0.2,
+        window_size: int = 10,          # ✅ N = 10
+        high_latency_s: float = 100.0,  # ✅ avg > 100 -> /2
+        low_latency_s: float = 60.0,    # ✅ avg < 60 & no error -> +1
+        error_rate_high: float = 0.1,   # ✅ err_rate >= 0.1 -> /2
     ):
         self.min_workers = max(1, int(min_workers))
         self.max_workers = max(self.min_workers, int(max_workers))
-        self.latency_threshold_s = float(latency_threshold_s)
-        self.error_threshold = float(error_threshold)
+
+        self.window_size = max(1, int(window_size))
+        self.high_latency_s = float(high_latency_s)
+        self.low_latency_s = float(low_latency_s)
+        self.error_rate_high = float(error_rate_high)
 
         self._lock = threading.Lock()
-        self._total_calls = 0
-        self._error_calls = 0
-        self._total_latency = 0.0
+        self._recent = deque(maxlen=self.window_size)  # items: (success: bool, elapsed_s: float)
+
+        # “粘性”并发：不是每次都从 default 开始算，而是基于上一次 workers 调整
+        self._current_workers = None  # type: int | None
+
+    def reset(self) -> None:
+        """清空窗口，并重置 current_workers。"""
+        with self._lock:
+            self._recent.clear()
+            self._current_workers = None
 
     def register_call(self, success: bool, elapsed_s: float) -> None:
+        """记录一次调用结果（线程安全）。"""
         with self._lock:
-            self._total_calls += 1
-            if not success:
-                self._error_calls += 1
-            self._total_latency += float(elapsed_s)
+            self._recent.append((bool(success), float(elapsed_s)))
 
-    def stats(self) -> Tuple[int, float, float]:
+    def window_stats(self) -> Tuple[int, float, float, int]:
+        """
+        返回 (n, avg_latency, error_rate, error_count) 基于最近窗口。
+        """
         with self._lock:
-            if self._total_calls == 0:
-                return 0, 0.0, 0.0
-            err_rate = self._error_calls / self._total_calls
-            avg_lat = self._total_latency / self._total_calls
-            return self._total_calls, err_rate, avg_lat
+            n = len(self._recent)
+            if n == 0:
+                return 0, 0.0, 0.0, 0
+            total_lat = 0.0
+            err = 0
+            for ok, dt in self._recent:
+                total_lat += float(dt)
+                if not ok:
+                    err += 1
+            avg = total_lat / n
+            err_rate = err / n
+            return n, avg, err_rate, err
 
     def suggest_workers(self, default_workers: int) -> int:
-        total, err_rate, avg_lat = self.stats()
-        default_workers = max(self.min_workers, min(int(default_workers), self.max_workers))
+        """
+        给出建议并发数（线程安全）。
+        - default_workers：你期望的默认并发（会被 min/max 裁剪）
+        - 返回：根据最近 N 次窗口规则更新后的 workers
+        """
+        default_workers = int(default_workers)
+        if default_workers <= 0:
+            default_workers = self.min_workers
 
-        if total == 0:
-            return default_workers
+        with self._lock:
+            # 初始化 current_workers：第一次用 default（并裁剪）
+            if self._current_workers is None:
+                self._current_workers = max(self.min_workers, min(default_workers, self.max_workers))
+            else:
+                # 允许外部 default 变化（例如 agent 数变少），把 current 也裁剪一下
+                self._current_workers = max(self.min_workers, min(self._current_workers, self.max_workers))
 
-        workers = default_workers
+            n = len(self._recent)
+            if n == 0:
+                return self._current_workers
 
-        # 高延迟或高错误率 → 缩减并发
-        if avg_lat >= self.latency_threshold_s or err_rate >= self.error_threshold:
-            workers = max(self.min_workers, workers // 2 or 1)
-        # 延迟健康且错误率低 → 温和提升一点并发
-        elif avg_lat <= self.latency_threshold_s * 0.6 and err_rate <= self.error_threshold * 0.5:
-            if workers < self.max_workers:
-                workers += 1
+            total_lat = 0.0
+            err = 0
+            for ok, dt in self._recent:
+                total_lat += float(dt)
+                if not ok:
+                    err += 1
 
-        return max(self.min_workers, min(workers, self.max_workers))
+            avg_lat = total_lat / n
+            err_rate = err / n
+
+            # ✅ 规则 1：avg > 100 或 err_rate >= 0.1 -> 并发 / 2
+            if (avg_lat > self.high_latency_s) or (err_rate >= self.error_rate_high):
+                halved = self._current_workers // 2
+                if halved <= 0:
+                    halved = 1
+                self._current_workers = max(self.min_workers, halved)
+
+            # ✅ 规则 2：avg < 60 且 0 错误 -> 并发 + 1
+            elif (avg_lat < self.low_latency_s) and (err == 0):
+                self._current_workers = min(self.max_workers, self._current_workers + 1)
+
+            # 最终再裁剪一次
+            self._current_workers = max(self.min_workers, min(self._current_workers, self.max_workers))
+            return self._current_workers
+
 
 
 # =========================
@@ -745,7 +803,6 @@ def prompt_discussion_message(
         "Scoring update guidance:\n",
         "- You SHOULD update your score this round (try not to keep it unchanged).\n",
         "- Recommended per-round change range: from -1.0 to +1.0.\n",
-        "- Use one decimal for the score (e.g., 4.6).\n",
         "- Keep score within [1.0, 5.0].\n\n",
         "Task:\n",
         "- Write ONE short chat message (1-3 sentences), clean and respectful.\n",

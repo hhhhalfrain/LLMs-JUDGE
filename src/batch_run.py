@@ -41,7 +41,7 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents exp2"
+BATCH_ID = "4agents exp3"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -60,7 +60,7 @@ QWEN_BASE_URLS = [
 # ============================================================
 
 # 方案 A：所有端点统一容量（推荐先用这个）
-QWEN_TASKS_PER_ENDPOINT = 1
+QWEN_TASKS_PER_ENDPOINT = 4
 
 # 方案 B：逐端点配置（启用则覆盖方案 A）
 # 1) 用 list：长度必须等于 QWEN_BASE_URLS
@@ -109,9 +109,9 @@ PER_BOOK_AGENT_WORKERS = 4
 # ✅ 网格维度（全部可扫）
 # -----------------------------
 METHODS = ["aggregation", "incremental", "summary_based"]
-USE_PERSONA_OPTS = [False, True]
-USE_DISCUSSION_OPTS = [False, True]
-USE_INTEREST_FILTER_OPTS = [True]
+USE_PERSONA_OPTS = [True, False]
+USE_DISCUSSION_OPTS = [True, False]
+USE_INTEREST_FILTER_OPTS = [True, False]
 
 DISCUSSION_ROUNDS_OPTS = [1, 2, 4]
 DISCUSSION_WINDOW_OPTS = [8]
