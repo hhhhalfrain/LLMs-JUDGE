@@ -5,6 +5,8 @@ batch_run.py  (实验级断点续跑 + 多端点负载均衡 + STAGE2 结果复�
 断点续跑策略：
 - 若 outputs/<run_id>/_DONE.json 存在：跳过该实验
 - 若 outputs/<run_id>/ 存在但没有 _DONE.json：删掉整个目录后重跑
+
+新增：端点槽位池（每个千问端点可同时跑多个“书籍大任务”，数量可配置）
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Tuple
+from queue import Queue
 
 from dotenv import load_dotenv
 
@@ -38,12 +41,12 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents exp1"
+BATCH_ID = "4agents exp2"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
 
-# 多个千问端点（你需要填成真实的 6 个 base_url）
+# 多个千问端点（你需要填成真实的 base_url）
 QWEN_BASE_URLS = [
     "http://10.130.71.2:30071/v1",
     "http://10.130.71.2:30921/v1",
@@ -52,9 +55,32 @@ QWEN_BASE_URLS = [
     "http://10.130.71.2:30810/v1",
 ]
 
-# 顶层“每个端点一个大实验线程”
-MAX_EXPERIMENT_WORKERS = max(1, len(QWEN_BASE_URLS))
-START_STAGGER_SEC = 1.0
+# ============================================================
+# ✅ 每个千问端点可同时跑几个“书籍大任务”（可配置）
+# ============================================================
+
+# 方案 A：所有端点统一容量（推荐先用这个）
+QWEN_TASKS_PER_ENDPOINT = 1
+
+# 方案 B：逐端点配置（启用则覆盖方案 A）
+# 1) 用 list：长度必须等于 QWEN_BASE_URLS
+QWEN_TASKS_PER_ENDPOINT_LIST = None
+# 示例：
+# QWEN_TASKS_PER_ENDPOINT_LIST = [2, 2, 1, 3, 2]
+
+# 2) 或者用 dict：没写的端点回退到 QWEN_TASKS_PER_ENDPOINT
+QWEN_TASKS_PER_ENDPOINT_MAP = None
+# 示例：
+# QWEN_TASKS_PER_ENDPOINT_MAP = {
+#     "http://10.130.71.2:30071/v1": 2,
+#     "http://10.130.71.2:30921/v1": 3,
+# }
+
+# 顶层 worker 总上限（再怎么有 slots 也不会超过这个）
+MAX_EXPERIMENT_WORKERS = 999999
+
+# 错峰启动（建议小一点；0 代表不做错峰）
+START_STAGGER_SEC = 0
 
 # ✅ 章节合并 batchsize
 CHAPTER_BATCH_SIZE = 1   # <= 1 表示不合并（保持原样）
@@ -83,11 +109,11 @@ PER_BOOK_AGENT_WORKERS = 4
 # ✅ 网格维度（全部可扫）
 # -----------------------------
 METHODS = ["aggregation", "incremental", "summary_based"]
-USE_PERSONA_OPTS = [False,True]
-USE_DISCUSSION_OPTS = [False,True]
+USE_PERSONA_OPTS = [False, True]
+USE_DISCUSSION_OPTS = [False, True]
 USE_INTEREST_FILTER_OPTS = [True]
 
-DISCUSSION_ROUNDS_OPTS = [1,2,4]
+DISCUSSION_ROUNDS_OPTS = [1, 2, 4]
 DISCUSSION_WINDOW_OPTS = [8]
 N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
@@ -128,6 +154,57 @@ def _safe_int(x: Any, default: int = 0) -> int:
         return int(x)
     except Exception:
         return default
+
+
+def build_endpoint_pool(
+    base_urls: List[str],
+    default_slots: int,
+    slots_list: List[int] | None = None,
+    slots_map: Dict[str, int] | None = None,
+) -> Tuple[Queue, Dict[str, int]]:
+    """
+    端点槽位池：
+    - pool 里放 base_url “令牌”
+    - 每个 base_url 放入 slots 个令牌
+    - interleave 放入令牌，减少“开局全堆一个端点”的概率
+    """
+    if not base_urls:
+        raise RuntimeError("QWEN_BASE_URLS 为空，无法调度。")
+
+    # 计算每个端点 slots
+    slots_by_url: Dict[str, int] = {}
+
+    if slots_list is not None:
+        if len(slots_list) != len(base_urls):
+            raise RuntimeError(
+                f"QWEN_TASKS_PER_ENDPOINT_LIST 长度({len(slots_list)})必须等于 QWEN_BASE_URLS 长度({len(base_urls)})"
+            )
+        for u, s in zip(base_urls, slots_list):
+            slots_by_url[u] = max(0, int(s))
+    elif slots_map is not None:
+        for u in base_urls:
+            s = slots_map.get(u, default_slots)
+            slots_by_url[u] = max(0, int(s))
+    else:
+        for u in base_urls:
+            slots_by_url[u] = max(0, int(default_slots))
+
+    pool: Queue = Queue()
+
+    max_k = 0
+    for u in base_urls:
+        max_k = max(max_k, int(slots_by_url.get(u, 0)))
+
+    # interleave 填充：u0,u1,u2,u0,u1,u2...
+    for i in range(max_k):
+        for u in base_urls:
+            if i < int(slots_by_url.get(u, 0)):
+                pool.put(u)
+
+    if pool.qsize() <= 0:
+        raise RuntimeError("所有端点 slots 都是 0，pool 为空；请检查 QWEN_TASKS_PER_ENDPOINT 配置。")
+
+    return pool, slots_by_url
 
 
 def batch_merge_chapters(book_record: Dict[str, Any], batch_size: int, inplace: bool = True) -> Dict[str, Any]:
@@ -248,6 +325,7 @@ def make_run_id(
         f"__cbs={int(chapter_batch_size)}"
     )
 
+
 def make_book_run_id(
     book_title: str,
     method: str,
@@ -274,8 +352,8 @@ def make_book_run_id(
         discussion_affects_score=discussion_affects_score,
         chapter_batch_size=chapter_batch_size,
     )
-    # 最外层再 sanitize 一次，保证整体可做目录名
     return sanitize_name(f"book={book_tag}__{core}")
+
 
 def build_cfg(
     output_root: Path,
@@ -369,6 +447,7 @@ def prepare_experiment_dir(exp_root: Path) -> Tuple[bool, Path, Path]:
     safe_mkdir(exp_root / "logs")  # 给 runner 写 jsonl/log 用
     return True, done_path, running_path
 
+
 # ============================================================
 # 单本书“大任务”：顺序跑所有实验配置（绑定一个 base_url）
 # ============================================================
@@ -405,7 +484,6 @@ def run_all_experiments_for_book(
     )
 
     for exp_local_idx, (m, up, ud, ui, rr, ww, na, sd, das) in enumerate(experiments):
-        # 针对「单本书 + 单实验配置」的 run_id
         run_id = make_book_run_id(
             book_title=book_title,
             method=m,
@@ -424,14 +502,17 @@ def run_all_experiments_for_book(
         should_run, done_path, running_path = prepare_experiment_dir(exp_root)
 
         if not should_run:
-            # 这个 (book, cfg) 已经完成，跳过
             print(f"[SKIP EXP] book={book_title} | run_id={run_id} (DONE exists)")
             n_skipped += 1
             continue
 
-        # 稍微错峰一下（只对每本书的第一个实验做延迟）
+        # 轻微错峰：只对每本书的第一个实验做延迟；按端点 index，避免 book_index 越大 sleep 越久
         if START_STAGGER_SEC > 0 and exp_local_idx == 0:
-            time.sleep(book_index * START_STAGGER_SEC)
+            try:
+                url_idx = QWEN_BASE_URLS.index(str(base_url))
+            except Exception:
+                url_idx = 0
+            time.sleep(url_idx * float(START_STAGGER_SEC))
 
         logger = setup_logger(
             str(exp_root / "logs"),
@@ -504,7 +585,6 @@ def run_all_experiments_for_book(
             int(chapter_batch_size),
         )
 
-        # 构造 cfg（注意 output_root 换成了 exp_root）
         cfg = build_cfg(
             output_root=exp_root,
             base_url=base_url,
@@ -520,7 +600,6 @@ def run_all_experiments_for_book(
             chapter_batch_size=chapter_batch_size,
         )
 
-        # 🔑 这里只评测「这一本文书」——不再在这里 for 所有 books
         evaluate_single_book(cfg, llm, logger, processed_book, personas_used)
 
         atomic_write_json(
@@ -542,6 +621,7 @@ def run_all_experiments_for_book(
         n_ran += 1
 
     return book_index, book_title, n_ran, n_skipped
+
 
 # ============================================================
 # 单个实验：顺序跑所有书（每个大实验绑定一个 base_url）
@@ -577,7 +657,7 @@ def run_one_experiment(
         return run_id
 
     if START_STAGGER_SEC > 0:
-        time.sleep(exp_index * START_STAGGER_SEC)
+        time.sleep(exp_index * float(START_STAGGER_SEC))
 
     logger = setup_logger(str(exp_root / "logs"), also_file=True, logger_name=f"llm_trace_{run_id}")
 
@@ -585,7 +665,6 @@ def run_one_experiment(
     if not api_key:
         raise RuntimeError(f"环境变量 {API_KEY_ENV} 未设置。")
 
-    # 自适应并发控制器：runner 内部按阶段使用 suggest_workers 调整每个阶段的 ThreadPoolExecutor 大小
     monitor = AdaptiveConcurrencyController(
         min_workers=1,
         max_workers=int(PER_BOOK_AGENT_WORKERS),
@@ -698,39 +777,58 @@ def main() -> None:
     print(f"[BATCH] experiments_per_book={n_exps}")
     print(f"[BATCH] chapter_batch_size={CHAPTER_BATCH_SIZE}")
 
-    n_endpoints = max(1, len(QWEN_BASE_URLS))
-    max_workers = min(MAX_EXPERIMENT_WORKERS, n_endpoints, n_books)
+    # 端点槽位池：每个端点可同时跑多个“书籍大任务”
+    endpoint_pool, slots_by_url = build_endpoint_pool(
+        base_urls=QWEN_BASE_URLS,
+        default_slots=int(QWEN_TASKS_PER_ENDPOINT),
+        slots_list=QWEN_TASKS_PER_ENDPOINT_LIST,
+        slots_map=QWEN_TASKS_PER_ENDPOINT_MAP,
+    )
 
-    print(f"[BATCH] qwen_endpoints={n_endpoints} max_workers={max_workers}")
+    total_slots = int(endpoint_pool.qsize())
+    max_workers = min(int(MAX_EXPERIMENT_WORKERS), int(total_slots), int(n_books))
 
-    # 顶层并发：每个 worker 持续处理若干本书
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futs = []
-        for book_idx in range(n_books):
-            base_url = QWEN_BASE_URLS[book_idx % n_endpoints]
-            futs.append(
-                ex.submit(
-                    run_all_experiments_for_book,
-                    book_idx,
-                    base_url,
-                    books,
-                    personas_raw,
-                    experiments,
-                    CHAPTER_BATCH_SIZE,
-                )
+    print(f"[BATCH] qwen_endpoints={len(QWEN_BASE_URLS)}")
+    print(f"[BATCH] endpoint_slots={slots_by_url}")
+    print(f"[BATCH] total_slots={total_slots} | max_workers={max_workers}")
+
+    def _run_book_with_endpoint_slot(book_idx: int) -> Tuple[int, str, int, int]:
+        """
+        每个 book 大任务开始前从 pool 拿一个端点令牌；结束后归还。
+        保证：每个 base_url 同时最多运行 slots_by_url[base_url] 个大任务。
+        """
+        base_url = endpoint_pool.get()
+        try:
+            return run_all_experiments_for_book(
+                book_index=book_idx,
+                base_url=base_url,
+                books=books,
+                personas_raw=personas_raw,
+                experiments=experiments,
+                chapter_batch_size=CHAPTER_BATCH_SIZE,
             )
+        finally:
+            endpoint_pool.put(base_url)
+
+    # 顶层并发：worker 总数 = min(总槽位数, 书本数, MAX_EXPERIMENT_WORKERS)
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = [ex.submit(_run_book_with_endpoint_slot, book_idx) for book_idx in range(n_books)]
 
         done_books = 0
         for fu in as_completed(futs):
-            book_idx, book_title, n_ran, n_skipped = fu.result()
+            try:
+                book_idx, book_title, n_ran, n_skipped = fu.result()
+            except Exception as e:
+                done_books += 1
+                print(f"[{done_books}/{n_books}] BOOK FUTURE FAILED: {type(e).__name__}: {e}")
+                continue
+
             done_books += 1
-            print(
-                f"[{done_books}/{n_books}] BOOK DONE {book_title} | exps_ran={n_ran} | exps_skipped={n_skipped}"
-            )
+            print(f"[{done_books}/{n_books}] BOOK DONE {book_title} | exps_ran={n_ran} | exps_skipped={n_skipped}")
+
 
     print(f"[BATCH] ALL BOOKS DONE. Raw outputs under: {OUTPUTS_ROOT}")
     print(f"[BATCH] Base eval cache under: {BASE_EVAL_ROOT}")
-
 
 
 def test() -> None:
@@ -768,13 +866,10 @@ def test() -> None:
             chapter_batch_size=CHAPTER_BATCH_SIZE,
         )
         done_books += 1
-        print(
-            f"[{done_books}/{n_books}] BOOK DONE {book_title} | exps_ran={n_ran} | exps_skipped={n_skipped}"
-        )
+        print(f"[{done_books}/{n_books}] BOOK DONE {book_title} | exps_ran={n_ran} | exps_skipped={n_skipped}")
 
     print(f"[BATCH-TEST] DONE. Raw outputs under: {OUTPUTS_ROOT}")
     print(f"[BATCH-TEST] Base eval cache under: {BASE_EVAL_ROOT}")
-
 
 
 if __name__ == "__main__":
