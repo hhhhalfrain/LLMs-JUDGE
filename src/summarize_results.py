@@ -18,7 +18,7 @@ import pandas as pd
 #  配置区（按需修改）
 # =========================
 # 和 batch_run.py 里的一样
-BATCH_ID = "4agents test6"
+BATCH_ID = "4agents t1"
 
 # PROJECT_ROOT 认为是：本脚本所在目录的上一级目录
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

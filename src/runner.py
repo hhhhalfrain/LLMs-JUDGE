@@ -710,24 +710,35 @@ def prompt_summary_incremental(
     intro = meta["intro"]
     author = str(meta.get("author", "")).strip()
 
+    gs_json = json.dumps(global_summary, ensure_ascii=False)
+
     parts = [
         "Novel metadata:\n",
         f"Title: {book_name}\n",
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
+
+        # ✅ summary 生成建议不做 persona 化：persona_text 传 None 时这里为空
         _persona_block(persona_text),
+
         "Current global summary JSON:\n",
-        f"{global_summary}\n\n",
+        f"{gs_json}\n\n",
+
         "New chapter text:\n",
         f"{chapter_text}\n\n",
-        "Task: Update global summary, compact and consistent.\n\n",
+
+        "Task: Update the global summary to reflect the entire book so far.\n",
+        "- Keep it compact, consistent, and cumulative.\n",
+        "- Update plot + characters based on new information.\n",
+        "- Maintain 2-4 short style excerpts (<= 25 words each) that showcase the author's voice.\n",
+        "  These excerpts should represent the writing style, NOT persona-specific tastes.\n\n",
+
         "Return JSON:\n",
         "{\n",
         '  "plot": string,\n',
         '  "characters": string,\n',
         '  "style_excerpts": [string, string, ...]\n',
         "}\n",
-        "Persona note: choose style_excerpts this persona would quote.\n",
     ]
     return sys_json_only(), "".join(parts)
 
@@ -737,27 +748,49 @@ def prompt_summary_final(
     global_summary: Dict[str, Any],
     persona_text: Optional[str],
     username: str,
-    current_score: float,
     discussion_tail: List[str],
+    rubric: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, str]:
     book_name = meta["book_name"]
     intro = meta["intro"]
     author = str(meta.get("author", "")).strip()
+
+    gs_json = json.dumps(global_summary, ensure_ascii=False)
+
+    if rubric is None:
+        rubric = {
+            "Plot & structure": "coherence, stakes, payoff, clarity",
+            "Character work": "depth, motivation, arcs, believability",
+            "Prose & style": "voice, clarity, rhythm, imagery",
+            "Pacing": "momentum, scene effectiveness, drag vs rush",
+            "Originality": "freshness vs cliché, distinctive ideas",
+            "Emotional impact": "tension, empathy, resonance",
+        }
+    rubric_text = "\n".join([f"- {k}: {v}" for k, v in rubric.items()])
 
     parts = [
         "Novel metadata:\n",
         f"Title: {book_name}\n",
         (f"Author: {author}\n" if author else ""),
         f"Blurb: {intro}\n\n",
+
         _persona_block(persona_text),
-        f"Your chat username: {username}\n",
-        f"Your current score (after discussion rounds): {current_score:.1f}\n\n",
+        f"Your chat username: {username}\n\n",
+
         "Global summary JSON:\n",
-        f"{global_summary}\n\n",
-        _discussion_block(discussion_tail),
+        f"{gs_json}\n\n",
+
+        (_discussion_block(discussion_tail) if discussion_tail else ""),
+
+        "Evaluation rubric:\n",
+        f"{rubric_text}\n\n",
+
         "Task:\n",
-        "- Write a critique in English (<= 220 words) in THIS persona's voice.\n",
-        "- Give an overall score (1.0-5.0, 1 decimal).\n\n",
+        "- Write ONE critique in English (<= 220 words) in THIS persona's voice.\n",
+        "- Give ONE overall score (1.0-5.0, 1 decimal).\n",
+        "- Base your judgment on the summary + rubric (+ discussion if provided).\n",
+        "- Do NOT assume any prior score.\n\n",
+
         "Return JSON:\n",
         "{\n",
         '  "critique": string,\n',
@@ -778,7 +811,6 @@ def prompt_discussion_message(
     """
     讨论轮输出（对模型强约束，但不做代码强制校验）：
     - 本轮建议更新评分（尽量不要保持不变）
-    - 建议单轮调整幅度在 [-0.3, +0.3]（允许 +0.1 / -0.2 等）
     - 若讨论明显一边倒：尽可能提出一个合理的不同意见/反例/担忧点（强烈建议，不强制）
     - JSON 不再输出 delta，只输出当前 score
     """
@@ -819,7 +851,6 @@ def prompt_discussion_message(
     return sys_json_only(), "".join(parts)
 
 
-
 def prompt_finalize_after_discussion(
     meta: Dict[str, Any],
     persona_text: Optional[str],
@@ -850,6 +881,19 @@ def prompt_finalize_after_discussion(
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
+
+
+def _counterpoint_block() -> str:
+    return "".join(
+        [
+            "Counterpoint rule (STRONGLY RECOMMENDED):\n",
+            "- If the group chat is one-sided (everyone agrees in the same direction, no real pushback),\n",
+            "  try to contribute at least ONE thoughtful counterpoint or alternative interpretation.\n",
+            "- Do NOT be contrarian just to be contrarian. Keep it plausible, text-grounded, and respectful.\n",
+            "- You may disagree partially (e.g., agree on pacing but question character motivation).\n\n",
+        ]
+    )
+
 
 
 
@@ -1335,6 +1379,9 @@ def evaluate_single_book(
     meta, chapters = _normalize_book_record(book_record)
     run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
 
+def _shared_summary_key() -> str:
+    # ✅改逻辑后建议换一个 key，避免读到你旧版本的 summary_based 缓存
+    return "__shared_summary_v2__"
 
 # =========================
 #  主流程：单本书
@@ -1349,15 +1396,12 @@ def run_one_book(
 ) -> None:
     """
     新版流程（你的需求）：
-    - STEP A（全局基线 / 原 STAGE2）：对所有 persona 或 nopersona 做基线评测（aggregation / incremental / summary_based）
-      并写入 base_eval_root 缓存。
-    - STEP B（兴趣筛选 / 原 STAGE1）：根据 metadata + persona 做 interest_filter，决定哪些 persona 进入讨论。
-    - STEP C（讨论 / 原 STAGE3）：只对 kept personas 进行多轮讨论。
-    - STEP D（讨论后最终打分 / 原 STAGE4）：summary_based 使用 summary_final，其余方法可选使用 finalize_after_discussion。
-    - 输出：只写原始数据（per-agent 基线 + interest + 讨论 + final_score），不再在这里计算 book_level 的 aggregate score。
+    - STEP A：aggregation/incremental 按原逻辑；summary_based 每本书只生成一次 global_summary（共享）。
+    - STEP B：兴趣筛选
+    - STEP C：讨论（可选）
+    - STEP D：summary_based 每 persona 只做一次 final critique + score（不传 current_score 锚定）
     """
 
-    # >>> 你的修改要求：max_workers > 4 强制固定为 4
     HARD_MAX_WORKERS = 4
 
     method = str(cfg.experiment.method)
@@ -1384,12 +1428,9 @@ def run_one_book(
         HARD_MAX_WORKERS,
     )
 
-    # 每本书一个 tracker + JSONL（完整对话日志）
-    # 每本书一个 tracker + JSONL（完整对话日志）
     tracker = ProgressTracker()
     run_ts = time.strftime("%Y%m%d_%H%M%S")
 
-    # ✅ 固定命名：避免 Windows 路径过长 / 特殊字符
     jsonl_path = os.path.join(str(cfg.paths.output_root), "logs", "trace.jsonl")
     writer = JSONLTraceWriter(jsonl_path)
     llm.set_run_context(tracker, writer)
@@ -1397,120 +1438,173 @@ def run_one_book(
 
     try:
         # -----------------------------------------------------
-        # 下面保持你原来的 STEP A/B/C/D 全部逻辑不变
-        # -----------------------------------------------------
-
-        # -----------------------------------------------------
-        # STEP A: 基线评测（对应原 STAGE2，但对所有 persona / nopersona，一次性跑完）
+        # STEP A: 基线评测 / 或 shared summary
         # -----------------------------------------------------
         base_payload: Dict[str, Dict[str, Any]] = {}
         pre_scores: Dict[str, float] = {}
         stances: Dict[str, str] = {}
 
-        if use_persona:
-            personas_for_base = personas_raw
-        else:
-            # ✅ persona 关闭：不借用任何真实 persona 作为“保底面具”
-            # 只跑一次“空 persona”基线，然后复制给所有 agent
-            personas_for_base = [{"uuid": "nopersona"}] if personas_raw else []
-
-        n_eval_agents = len(personas_for_base)
         n_chapters = len(chapters)
 
-        if n_eval_agents > 0 and n_chapters > 0:
-            monitor = getattr(llm, "monitor", None)
-            default_workers = max(1, min(max_workers_cfg, n_eval_agents))
-            if isinstance(monitor, AdaptiveConcurrencyController):
-                workers = monitor.suggest_workers(default_workers)
-            else:
-                workers = default_workers
-            workers = max(1, min(workers, n_eval_agents, HARD_MAX_WORKERS))
+        # ✅ 核心改动：summary_based 每本书只生成一次 global_summary
+        if method == "summary_based":
+            # 用一个固定的 persona_key 来缓存 shared summary，并带版本号避免旧缓存污染
+            shared_pk = "__shared_summary_v2__"
 
-            logger.info(
-                "STAGE START: base_eval | method=%s | eval_agents=%d | chapters=%d | workers=%d",
-                method,
-                n_eval_agents,
-                n_chapters,
-                workers,
-            )
+            gs: Optional[Dict[str, Any]] = None
+            cached = _load_base_eval_from_disk(cfg, method, book_name, shared_pk)
+            if isinstance(cached, dict) and cached.get("kind") == "summary_based":
+                payload = cached.get("payload", None)
+                if isinstance(payload, dict):
+                    gs = payload
 
-            def persona_cache_key(p: Dict[str, Any]) -> str:
-                if use_persona:
-                    return str(p.get("uuid", "unknown"))
-                return "nopersona"
+            if gs is None and n_chapters > 0:
+                # 只在需要实际生成 summary 时设置 tracker total
+                tracker.set_total("summary_incremental", n_chapters)
+                logger.info(
+                    "STAGE START: base_eval(summary_based_shared) | chapters=%d | workers=1",
+                    n_chapters,
+                )
 
-            # 仅统计“需要实际调用 LLM 的 persona 数量”用于 tracker
-            to_eval: List[Dict[str, Any]] = []
-            base_root = _get_base_eval_root(cfg)
-            if base_root:
-                for p in personas_for_base:
-                    pk = persona_cache_key(p)
-                    path = _base_eval_cache_path(cfg, method, book_name, pk)
-                    if not (path and os.path.exists(path)):
-                        to_eval.append(p)
-            else:
-                to_eval = list(personas_for_base)
-
-            # 用真实 trace stage 名来设 total，保证 snapshot/tick 能命中
-            method_stage_map = {
-                "aggregation": "aggregation_chapter",
-                "incremental": "incremental_update",
-                "summary_based": "summary_incremental",
-            }
-            base_call_stage = method_stage_map.get(method, "base_eval")
-
-            if to_eval:
-                tracker.set_total(base_call_stage, len(to_eval) * n_chapters)
-
-            def _base_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, Dict[str, Any]]:
-                uid = str(persona_raw.get("uuid"))
-                pk = persona_cache_key(persona_raw)
-                persona_txt = _persona_text(persona_raw) if use_persona else None
-                rec = _ensure_base_eval_for_persona(
+                # ✅ summary 不做 persona 化（更符合“整书事实总结”）
+                gs = build_summary_agent(
                     llm=llm,
                     cfg=cfg,
                     meta=meta,
                     chapters=chapters,
-                    method=method,
-                    persona_text=persona_txt,
-                    persona_key=pk,
-                    agent_uuid=uid,
-                    score_decimals=score_decimals,
+                    agent_uuid="shared_summary",
+                    persona_text=None,
                 )
-                return uid, pk, rec
 
-            base_result_by_key: Dict[str, Dict[str, Any]] = {}
+                base_eval = {
+                    "kind": "summary_based",
+                    "payload": gs,
+                    "pre_discussion_score": 0.0,  # 仅为结构完整；summary_based 不依赖它
+                    "stance": "",
+                }
+                _save_base_eval_to_disk(
+                    cfg=cfg,
+                    method=method,
+                    book_name=book_name,
+                    persona_key=shared_pk,
+                    agent_uuid="shared_summary",
+                    base_eval=base_eval,
+                )
+                logger.info("STAGE DONE: base_eval(summary_based_shared)")
 
-            if n_eval_agents == 1:
-                uid, pk, rec = _base_worker(personas_for_base[0])
-                base_result_by_key[pk] = rec
-                base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
-                pre_scores[uid] = float(rec["pre_discussion_score"])
-                stances[uid] = rec["stance"]
+            # gs 仍可能为 None（例如没章节），给个兜底
+            if gs is None:
+                gs = {"plot": "", "characters": "", "style_excerpts": []}
+
+            # ✅ 共享给所有 persona
+            for p in personas_raw:
+                uid = str(p.get("uuid"))
+                base_payload[uid] = {"kind": "summary_based", "payload": gs}
+                # 讨论用的立场（不强绑分数）
+                stances[uid] = "I have a full-book summary in mind and can discuss the book's strengths/weaknesses."
+
+        else:
+            # -----------------------------------------------------
+            # 原 STEP A：aggregation / incremental 逻辑保持不变
+            # -----------------------------------------------------
+            if use_persona:
+                personas_for_base = personas_raw
             else:
-                with ThreadPoolExecutor(max_workers=workers) as ex:
-                    futures = [ex.submit(_base_worker, p) for p in personas_for_base]
-                    for fu in as_completed(futures):
-                        uid, pk, rec = fu.result()
-                        base_result_by_key[pk] = rec
-                        base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
-                        pre_scores[uid] = float(rec["pre_discussion_score"])
-                        stances[uid] = rec["stance"]
+                personas_for_base = [{"uuid": "nopersona"}] if personas_raw else []
 
-            logger.info("STAGE DONE: base_eval | method=%s", method)
+            n_eval_agents = len(personas_for_base)
 
-            # persona 关闭时：把 nopersona 的结果复制到所有 agent 上（你说的“乘以智能体数”）
-            if not use_persona and base_result_by_key:
-                shared = base_result_by_key.get("nopersona")
-                if shared:
-                    for p in personas_raw:
-                        uid = str(p.get("uuid"))
-                        base_payload[uid] = {"kind": shared["kind"], "payload": shared["payload"]}
-                        pre_scores[uid] = float(shared["pre_discussion_score"])
-                        stances[uid] = shared["stance"]
+            if n_eval_agents > 0 and n_chapters > 0:
+                monitor = getattr(llm, "monitor", None)
+                default_workers = max(1, min(max_workers_cfg, n_eval_agents))
+                if isinstance(monitor, AdaptiveConcurrencyController):
+                    workers = monitor.suggest_workers(default_workers)
+                else:
+                    workers = default_workers
+                workers = max(1, min(workers, n_eval_agents, HARD_MAX_WORKERS))
+
+                logger.info(
+                    "STAGE START: base_eval | method=%s | eval_agents=%d | chapters=%d | workers=%d",
+                    method,
+                    n_eval_agents,
+                    n_chapters,
+                    workers,
+                )
+
+                def persona_cache_key(p: Dict[str, Any]) -> str:
+                    if use_persona:
+                        return str(p.get("uuid", "unknown"))
+                    return "nopersona"
+
+                to_eval: List[Dict[str, Any]] = []
+                base_root = _get_base_eval_root(cfg)
+                if base_root:
+                    for p in personas_for_base:
+                        pk = persona_cache_key(p)
+                        path = _base_eval_cache_path(cfg, method, book_name, pk)
+                        if not (path and os.path.exists(path)):
+                            to_eval.append(p)
+                else:
+                    to_eval = list(personas_for_base)
+
+                method_stage_map = {
+                    "aggregation": "aggregation_chapter",
+                    "incremental": "incremental_update",
+                    "summary_based": "summary_incremental",
+                }
+                base_call_stage = method_stage_map.get(method, "base_eval")
+
+                if to_eval:
+                    tracker.set_total(base_call_stage, len(to_eval) * n_chapters)
+
+                def _base_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, Dict[str, Any]]:
+                    uid = str(persona_raw.get("uuid"))
+                    pk = persona_cache_key(persona_raw)
+                    persona_txt = _persona_text(persona_raw) if use_persona else None
+                    rec = _ensure_base_eval_for_persona(
+                        llm=llm,
+                        cfg=cfg,
+                        meta=meta,
+                        chapters=chapters,
+                        method=method,
+                        persona_text=persona_txt,
+                        persona_key=pk,
+                        agent_uuid=uid,
+                        score_decimals=score_decimals,
+                    )
+                    return uid, pk, rec
+
+                base_result_by_key: Dict[str, Dict[str, Any]] = {}
+
+                if n_eval_agents == 1:
+                    uid, pk, rec = _base_worker(personas_for_base[0])
+                    base_result_by_key[pk] = rec
+                    base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
+                    pre_scores[uid] = float(rec["pre_discussion_score"])
+                    stances[uid] = rec["stance"]
+                else:
+                    with ThreadPoolExecutor(max_workers=workers) as ex:
+                        futures = [ex.submit(_base_worker, p) for p in personas_for_base]
+                        for fu in as_completed(futures):
+                            uid, pk, rec = fu.result()
+                            base_result_by_key[pk] = rec
+                            base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
+                            pre_scores[uid] = float(rec["pre_discussion_score"])
+                            stances[uid] = rec["stance"]
+
+                logger.info("STAGE DONE: base_eval | method=%s", method)
+
+                if not use_persona and base_result_by_key:
+                    shared = base_result_by_key.get("nopersona")
+                    if shared:
+                        for p in personas_raw:
+                            uid = str(p.get("uuid"))
+                            base_payload[uid] = {"kind": shared["kind"], "payload": shared["payload"]}
+                            pre_scores[uid] = float(shared["pre_discussion_score"])
+                            stances[uid] = shared["stance"]
 
         # -----------------------------------------------------
-        # STEP B: 兴趣筛选（对应原 STAGE1）
+        # STEP B: 兴趣筛选（保持原样）
         # -----------------------------------------------------
         decisions: Dict[str, Dict[str, Any]] = {}
         if use_interest_filter:
@@ -1569,18 +1663,14 @@ def run_one_book(
         )
 
         # -----------------------------------------------------
-        # STEP C: 讨论（原 STAGE3）
-        # 目标：
-        # - 干净聊天室（尊重、简洁、带用户名）
-        # - 每轮讨论都要改分（delta!=0），幅度建议[-0.3, +0.3]（允许0.1/-0.2等）
-        # - 不做严格校验/纠偏：尽量相信模型给的 delta/new_score（只做分数范围clamp）
+        # STEP C: 讨论（保持原样，summary_based 也可讨论）
         # -----------------------------------------------------
         global_messages: List[str] = []
         per_agent_discussion: Dict[str, List[Dict[str, Any]]] = {str(p.get("uuid")): [] for p in kept_personas}
 
         n_kept = len(kept_personas)
 
-        disc_decimals = max(1, int(score_decimals))  # 讨论分数建议至少1位小数
+        disc_decimals = max(1, int(score_decimals))
         discussion_scores: Dict[str, float] = {
             str(p.get("uuid")): round(float(pre_scores.get(str(p.get("uuid")), 3.0)), disc_decimals)
             for p in kept_personas
@@ -1657,7 +1747,6 @@ def run_one_book(
                     raw_msg = str(obj.get("message", "")).strip() or "(no message)"
                     body = _clean_one_line(_strip_leading_bracket_name(raw_msg))
 
-                    # 新协议：优先读 obj["score"]；兼容旧协议（new_score / delta）
                     score_val: Optional[float] = None
                     try:
                         if obj.get("score", None) is not None:
@@ -1665,7 +1754,6 @@ def run_one_book(
                     except Exception:
                         score_val = None
 
-                    # 兼容旧字段（如果模型还在吐 new_score）
                     if score_val is None:
                         try:
                             if obj.get("new_score", None) is not None:
@@ -1673,7 +1761,6 @@ def run_one_book(
                         except Exception:
                             score_val = None
 
-                    # 最后兜底兼容：如果只给了 delta（旧格式），允许用它更新
                     if score_val is None:
                         try:
                             if obj.get("delta", None) is not None:
@@ -1684,11 +1771,10 @@ def run_one_book(
                     if score_val is not None:
                         new_sc = round(clamp_score(score_val), disc_decimals)
                     else:
-                        new_sc = prev_sc  # 不做强制纠偏/强制改分
+                        new_sc = prev_sc
 
-                    delta_used = round(new_sc - prev_sc, disc_decimals)  # 仅用于内部记录/分析（不再喂给模型）
+                    delta_used = round(new_sc - prev_sc, disc_decimals)
 
-                    # 聊天行：不再展示 Δ，避免“跟风调分”信号
                     chat_line = f"[{username}] (score {new_sc:.1f}): {body}"
                     chat_line = _clean_one_line(chat_line, n=320)
 
@@ -1704,16 +1790,10 @@ def run_one_book(
                         for fu in as_completed(futures):
                             round_rows.append(fu.result())
 
-                # 固定顺序合并（按 uid），避免并发导致顺序漂移
                 for uid, username, delta_used, new_sc, chat_line, body in sorted(round_rows, key=lambda x: x[0]):
                     global_messages.append(chat_line)
                     per_agent_discussion[uid].append(
-                        {
-                            "round": r,
-                            "username": username,
-                            "score": float(new_sc),
-                            "message": body,
-                        }
+                        {"round": r, "username": username, "score": float(new_sc), "message": body}
                     )
                     discussion_scores[uid] = float(new_sc)
                     stances[uid] = f"My current score is {new_sc:.1f}. {body}"
@@ -1721,8 +1801,7 @@ def run_one_book(
                 logger.info("STAGE DONE: %s | total_messages=%d", stage_name, len(global_messages))
 
         # -----------------------------------------------------
-        # STEP D: 最终打分（原 STAGE4）
-        # baseline pre_score = discussion_scores（讨论轮已经滚动更新）
+        # STEP D: 最终打分
         # -----------------------------------------------------
         post_scores: Dict[str, float] = {}
         final_reviews: Dict[str, str] = {}
@@ -1755,14 +1834,12 @@ def run_one_book(
                     persona_txt = _persona_text(persona_raw) if use_persona else None
                     gs = base_payload[uid]["payload"]
 
-                    baseline_sc = round(float(discussion_scores.get(uid, pre_scores.get(uid, 3.0))), disc_decimals)
-
+                    # ✅ 核心改动：不再传 current_score（避免锚定）
                     system, user = prompt_summary_final(
                         meta=meta,
                         global_summary=gs,
                         persona_text=persona_txt,
                         username=username,
-                        current_score=baseline_sc,
                         discussion_tail=disc_tail if use_discussion else [],
                     )
                     _, parsed = llm.chat_json(
@@ -1783,9 +1860,9 @@ def run_one_book(
                     critique = str(obj.get("critique", "")).strip()
 
                     try:
-                        score = float(obj.get("score", baseline_sc))
+                        score = float(obj.get("score", 3.0))
                     except Exception:
-                        score = baseline_sc
+                        score = 3.0
                     score = round(clamp_score(score), score_decimals)
 
                     return uid, score, critique
@@ -1868,7 +1945,7 @@ def run_one_book(
                     logger.info("STAGE DONE: finalize_after_discussion")
 
         # -----------------------------------------------------
-        # 输出 struct：只保留原始数据，不在这里做“book_score”之类的评测聚合
+        # 输出 struct（保持原样）
         # -----------------------------------------------------
         agents_out: List[Dict[str, Any]] = []
 
@@ -1896,7 +1973,6 @@ def run_one_book(
                 "global_summary": None,
             }
 
-            # 挂上基线评测的 payload（所有 persona 都有，而不仅是 kept）
             if uid in base_payload:
                 kind = base_payload[uid]["kind"]
                 payload = base_payload[uid]["payload"]
@@ -1905,7 +1981,6 @@ def run_one_book(
                     agent_obj["chapter_evals"] = payload
                 elif kind == "incremental":
                     agent_obj["incremental_steps"] = payload.get("steps", [])
-                    # 若没有讨论，则可以把最后的 review 当作 final_review 的初始值
                     if (not use_discussion) and method == "incremental" and agent_obj.get("final_review") is None:
                         agent_obj["final_review"] = str(payload.get("last_state", {}).get("review", "")).strip()
                 elif kind == "summary_based":
@@ -1923,17 +1998,13 @@ def run_one_book(
             "config": _safe_cfg_dump(cfg),
             "agents": agents_out,
             "aggregate": {
-                # 不在这里计算 book_score，把聚合评测交给后续脚本
                 "n_agents_total": len(personas_raw),
                 "n_kept": len(kept_personas),
                 "filtered_pre_read": filtered_pre,
             },
+            "run_ts": run_ts,
         }
 
-        # （可选但推荐）把 run_ts 写进结果，方便你后处理知道是哪次跑的
-        out["run_ts"] = run_ts
-
-        # ✅ 固定命名：后处理直接读 outputs/<run_id>/result.json
         out_path = os.path.join(str(cfg.paths.output_root), "result.json")
         write_json(out_path, out)
 
@@ -1944,4 +2015,5 @@ def run_one_book(
             writer.close()
         except Exception:
             pass
+
 
