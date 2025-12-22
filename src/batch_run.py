@@ -41,7 +41,7 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_nanotest.jso
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents t2"
+BATCH_ID = "4agents t3                        "
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -110,14 +110,15 @@ PER_BOOK_AGENT_WORKERS = 4
 # -----------------------------
 METHODS = ["summary_based"]
 USE_PERSONA_OPTS = [True]
-USE_DISCUSSION_OPTS = [True,False]
 USE_INTEREST_FILTER_OPTS = [True]
 
-DISCUSSION_ROUNDS_OPTS = [4]
+# ✅ 只关心最高讨论轮数：程序内部会记录 round=0..R 的所有分数
+DISCUSSION_ROUNDS_OPTS = [4]          # 你可以写 [0,2,4]，但只会取 max=4
 DISCUSSION_WINDOW_OPTS = [8]
 N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
 DISCUSSION_AFFECTS_SCORE_OPTS = [True]
+
 
 
 # ============================================================
@@ -412,41 +413,44 @@ def build_cfg(
 
 def build_experiments_grid() -> List[Tuple]:
     """
-    规则：
-    - 当 use_persona=False 时，interest_filter 没意义，强制关闭（use_interest_filter=False）。
-    - 同时做去重：避免 ui=True/ui=False 在 up=False 时都映射到 ui=False 造成重复实验。
+    改动：
+    - 移除 USE_DISCUSSION_OPTS
+    - 只关心最高 DISCUSSION_ROUNDS_OPTS（rr_max）
+    - use_discussion 由 rr_max>0 自动决定
+    - rr_max=0 时等价于 USE_DISCUSSION=False
     """
     exps: List[Tuple] = []
     seen = set()
 
+    rr_max = max([int(x) for x in (DISCUSSION_ROUNDS_OPTS or [0])])
+    rr_list = [rr_max]
+
     for m in METHODS:
         for up in USE_PERSONA_OPTS:
             up = bool(up)
-            for ud in USE_DISCUSSION_OPTS:
-                ud = bool(ud)
-                for ui in USE_INTEREST_FILTER_OPTS:
-                    # persona 关 -> interest 强制关
-                    ui_eff = bool(ui) if up else False
+            for ui in USE_INTEREST_FILTER_OPTS:
+                ui_eff = bool(ui) if up else False
 
-                    for rr in DISCUSSION_ROUNDS_OPTS:
-                        rr = int(rr)
-                        for ww in DISCUSSION_WINDOW_OPTS:
-                            ww = int(ww)
-                            for na in N_AGENTS_OPTS:
-                                na = int(na)
-                                for sd in SCORE_DECIMALS_OPTS:
-                                    sd = int(sd)
-                                    for das in DISCUSSION_AFFECTS_SCORE_OPTS:
-                                        das = bool(das)
+                for rr in rr_list:
+                    rr = int(rr)
+                    ud = bool(rr > 0)   # ✅ 由 rr 决定是否启用讨论
 
-                                        key = (m, up, ud, ui_eff, rr, ww, na, sd, das)
-                                        if key in seen:
-                                            continue
-                                        seen.add(key)
+                    for ww in DISCUSSION_WINDOW_OPTS:
+                        ww = int(ww)
+                        for na in N_AGENTS_OPTS:
+                            na = int(na)
+                            for sd in SCORE_DECIMALS_OPTS:
+                                sd = int(sd)
+                                for das in DISCUSSION_AFFECTS_SCORE_OPTS:
+                                    das = bool(das)
 
-                                        exps.append((m, up, ud, ui_eff, rr, ww, na, sd, das))
-
+                                    key = (m, up, ud, ui_eff, rr, ww, na, sd, das)
+                                    if key in seen:
+                                        continue
+                                    seen.add(key)
+                                    exps.append((m, up, ud, ui_eff, rr, ww, na, sd, das))
     return exps
+
 
 
 

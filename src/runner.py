@@ -894,6 +894,36 @@ def _counterpoint_block() -> str:
         ]
     )
 
+def prompt_summary_initial_score(
+    meta: Dict[str, Any],
+    global_summary: Dict[str, Any],
+    persona_text: Optional[str],
+    username: str,
+) -> Tuple[str, str]:
+    book_name = meta["book_name"]
+    intro = meta["intro"]
+    author = str(meta.get("author", "")).strip()
+    gs_json = json.dumps(global_summary, ensure_ascii=False)
+
+    parts = [
+        "Novel metadata:\n",
+        f"Title: {book_name}\n",
+        (f"Author: {author}\n" if author else ""),
+        f"Blurb: {intro}\n\n",
+        _persona_block(persona_text),
+        f"Your chat username: {username}\n\n",
+        "Global summary JSON:\n",
+        f"{gs_json}\n\n",
+        "Task:\n",
+        "- Based ONLY on the summary, give your INITIAL overall score (1.0-5.0, 1 decimal).\n",
+        "- Provide a short stance (1-2 sentences) that you can use in group discussion.\n\n",
+        "Return JSON:\n",
+        "{\n",
+        '  "score": number (1.0-5.0),\n',
+        '  "stance": string\n',
+        "}\n",
+    ]
+    return sys_json_only(), "".join(parts)
 
 
 
@@ -1395,18 +1425,18 @@ def run_one_book(
     personas_raw: List[Dict[str, Any]],
 ) -> None:
     """
-    新版流程（你的需求）：
-    - STEP A：aggregation/incremental 按原逻辑；summary_based 每本书只生成一次 global_summary（共享）。
+    新版流程（按你本次需求）：
+    - STEP A：基线评测 / shared summary
     - STEP B：兴趣筛选
-    - STEP C：讨论（可选）
-    - STEP D：summary_based 每 persona 只做一次 final critique + score（不传 current_score 锚定）
+    - STEP C：讨论（round=1..R）
+    - ✅ 不再 STEP D 最终评分：最终分数直接使用讨论阶段的分数
+    - 记录每个 agent 的 score_history：round=0(基线) + 每轮讨论后(round=1..R)
     """
 
     HARD_MAX_WORKERS = 4
 
     method = str(cfg.experiment.method)
     use_persona = _get_bool(cfg, "experiment.use_persona", True)
-    use_discussion = _get_bool(cfg, "experiment.use_discussion", False)
     use_interest_filter = _get_bool(cfg, "experiment.use_interest_filter", True)
 
     n_agents = len(personas_raw)
@@ -1414,18 +1444,22 @@ def run_one_book(
     if max_workers_cfg > HARD_MAX_WORKERS:
         max_workers_cfg = HARD_MAX_WORKERS
 
-    rounds = _get_int(cfg, "experiment.discussion_rounds", 2)
+    rounds = _get_int(cfg, "experiment.discussion_rounds", 0)
     window = _get_int(cfg, "experiment.discussion_window", 10)
     score_decimals = _get_int(cfg, "experiment.score_decimals", 1)
 
+    # ✅ 关键：DISCUSSION_ROUNDS=0 等价于 USE_DISCUSSION=False（不再看 cfg.experiment.use_discussion）
+    use_discussion = bool(rounds > 0)
+
     book_name = str(meta.get("book_name", "UNKNOWN"))
     logger.info(
-        ">>> BOOK START: %s | method=%s | agents=%d | max_workers_cfg=%d (hard_cap=%d)",
+        ">>> BOOK START: %s | method=%s | agents=%d | max_workers_cfg=%d (hard_cap=%d) | discussion_rounds=%d",
         book_name,
         method,
         n_agents,
         max_workers_cfg,
         HARD_MAX_WORKERS,
+        rounds,
     )
 
     tracker = ProgressTracker()
@@ -1435,6 +1469,19 @@ def run_one_book(
     writer = JSONLTraceWriter(jsonl_path)
     llm.set_run_context(tracker, writer)
     logger.info("FULL TRACE(JSONL): %s", jsonl_path)
+
+    def _username_of(persona_raw: Dict[str, Any], uid: str) -> str:
+        u = str(persona_raw.get("username", "") or "").strip()
+        return u if u else f"user_{_short_uid(uid)}"
+
+    def _clean_one_line(s: str, n: int = 240) -> str:
+        s = str(s or "").replace("\r", " ").replace("\n", " ").strip()
+        s = re.sub(r"\s+", " ", s)
+        return s if len(s) <= n else (s[:n] + " ...")
+
+    def _strip_leading_bracket_name(msg: str) -> str:
+        m = re.match(r"^\s*\[[^\]]+\]\s*[:\-]?\s*(.*)$", msg.strip())
+        return (m.group(1).strip() if m else msg.strip())
 
     try:
         # -----------------------------------------------------
@@ -1446,9 +1493,8 @@ def run_one_book(
 
         n_chapters = len(chapters)
 
-        # ✅ 核心改动：summary_based 每本书只生成一次 global_summary
         if method == "summary_based":
-            # 用一个固定的 persona_key 来缓存 shared summary，并带版本号避免旧缓存污染
+            # 1) 每本书只生成一次 shared global_summary（可复用缓存）
             shared_pk = "__shared_summary_v2__"
 
             gs: Optional[Dict[str, Any]] = None
@@ -1459,27 +1505,22 @@ def run_one_book(
                     gs = payload
 
             if gs is None and n_chapters > 0:
-                # 只在需要实际生成 summary 时设置 tracker total
                 tracker.set_total("summary_incremental", n_chapters)
-                logger.info(
-                    "STAGE START: base_eval(summary_based_shared) | chapters=%d | workers=1",
-                    n_chapters,
-                )
+                logger.info("STAGE START: base_eval(summary_based_shared) | chapters=%d | workers=1", n_chapters)
 
-                # ✅ summary 不做 persona 化（更符合“整书事实总结”）
                 gs = build_summary_agent(
                     llm=llm,
                     cfg=cfg,
                     meta=meta,
                     chapters=chapters,
                     agent_uuid="shared_summary",
-                    persona_text=None,
+                    persona_text=None,  # ✅ shared summary 不做 persona 化
                 )
 
                 base_eval = {
                     "kind": "summary_based",
                     "payload": gs,
-                    "pre_discussion_score": 0.0,  # 仅为结构完整；summary_based 不依赖它
+                    "pre_discussion_score": 0.0,
                     "stance": "",
                 }
                 _save_base_eval_to_disk(
@@ -1492,21 +1533,80 @@ def run_one_book(
                 )
                 logger.info("STAGE DONE: base_eval(summary_based_shared)")
 
-            # gs 仍可能为 None（例如没章节），给个兜底
             if gs is None:
                 gs = {"plot": "", "characters": "", "style_excerpts": []}
 
-            # ✅ 共享给所有 persona
-            for p in personas_raw:
-                uid = str(p.get("uuid"))
-                base_payload[uid] = {"kind": "summary_based", "payload": gs}
-                # 讨论用的立场（不强绑分数）
-                stances[uid] = "I have a full-book summary in mind and can discuss the book's strengths/weaknesses."
+            # 2) ✅ 生成 round=0 起始分（每 persona 一次；用于讨论与最终输出）
+            if n_agents > 0:
+                tracker.set_total("summary_initial_score", n_agents)
+
+                monitor = getattr(llm, "monitor", None)
+                default_workers = max(1, min(max_workers_cfg, n_agents))
+                if isinstance(monitor, AdaptiveConcurrencyController):
+                    workers = monitor.suggest_workers(default_workers)
+                else:
+                    workers = default_workers
+                workers = max(1, min(workers, n_agents, HARD_MAX_WORKERS))
+
+                logger.info("STAGE START: summary_initial_score | total_tasks=%d | workers=%d", n_agents, workers)
+
+                def _init_score_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
+                    uid = str(persona_raw.get("uuid"))
+                    username = _username_of(persona_raw, uid)
+                    persona_txt = _persona_text(persona_raw) if use_persona else None
+
+                    system, user = prompt_summary_initial_score(
+                        meta=meta,
+                        global_summary=gs,
+                        persona_text=persona_txt,
+                        username=username,
+                    )
+                    _, parsed = llm.chat_json(
+                        system=system,
+                        user=user,
+                        temperature=float(cfg.llm.temperature),
+                        top_p=float(cfg.llm.top_p),
+                        max_tokens=int(cfg.llm.max_tokens),
+                        trace={
+                            "book": book_name,
+                            "agent": uid,
+                            "method": method,
+                            "stage": "summary_initial_score",
+                            "chapter": None,
+                        },
+                    )
+                    obj = parsed or {}
+
+                    try:
+                        sc = float(obj.get("score", 3.0))
+                    except Exception:
+                        sc = 3.0
+                    sc = round(clamp_score(sc), score_decimals)
+
+                    stance = str(obj.get("stance", "")).strip()
+                    if not stance:
+                        stance = f"My current score is {sc:.1f}."
+
+                    return uid, sc, stance
+
+                if workers == 1:
+                    rows = [_init_score_worker(p) for p in personas_raw]
+                else:
+                    rows = []
+                    with ThreadPoolExecutor(max_workers=workers) as ex:
+                        futs = [ex.submit(_init_score_worker, p) for p in personas_raw]
+                        for fu in as_completed(futs):
+                            rows.append(fu.result())
+
+                for uid, sc, stance in rows:
+                    base_payload[uid] = {"kind": "summary_based", "payload": gs}
+                    pre_scores[uid] = float(sc)
+                    stances[uid] = stance
+
+                logger.info("STAGE DONE: summary_initial_score")
 
         else:
-            # -----------------------------------------------------
-            # 原 STEP A：aggregation / incremental 逻辑保持不变
-            # -----------------------------------------------------
+            # aggregation / incremental：保持你原来的基线评测逻辑
             if use_persona:
                 personas_for_base = personas_raw
             else:
@@ -1525,10 +1625,7 @@ def run_one_book(
 
                 logger.info(
                     "STAGE START: base_eval | method=%s | eval_agents=%d | chapters=%d | workers=%d",
-                    method,
-                    n_eval_agents,
-                    n_chapters,
-                    workers,
+                    method, n_eval_agents, n_chapters, workers
                 )
 
                 def persona_cache_key(p: Dict[str, Any]) -> str:
@@ -1603,6 +1700,14 @@ def run_one_book(
                             pre_scores[uid] = float(shared["pre_discussion_score"])
                             stances[uid] = shared["stance"]
 
+        # ✅ 兜底：保证每个 agent 都有 round=0 分数
+        for p in personas_raw:
+            uid = str(p.get("uuid"))
+            if uid not in pre_scores:
+                pre_scores[uid] = 3.0
+            if uid not in stances:
+                stances[uid] = f"My current score is {pre_scores[uid]:.1f}."
+
         # -----------------------------------------------------
         # STEP B: 兴趣筛选（保持原样）
         # -----------------------------------------------------
@@ -1657,37 +1762,30 @@ def run_one_book(
         filtered_pre = len(personas_raw) - len(kept_personas)
         logger.info(
             "STAGE DONE: interest_filter | kept=%d/%d | filtered_pre_read=%d",
-            len(kept_personas),
-            n_agents,
-            filtered_pre,
+            len(kept_personas), n_agents, filtered_pre
         )
 
         # -----------------------------------------------------
-        # STEP C: 讨论（保持原样，summary_based 也可讨论）
+        # ✅ 记录 round=0..R 的分数轨迹
+        # -----------------------------------------------------
+        disc_decimals = max(1, int(score_decimals))
+        score_history: Dict[str, List[Dict[str, Any]]] = {}
+        for p in personas_raw:
+            uid = str(p.get("uuid"))
+            score_history[uid] = [{"round": 0, "score": round(float(pre_scores.get(uid, 3.0)), disc_decimals)}]
+
+        # -----------------------------------------------------
+        # STEP C: 讨论（round=1..R）
         # -----------------------------------------------------
         global_messages: List[str] = []
         per_agent_discussion: Dict[str, List[Dict[str, Any]]] = {str(p.get("uuid")): [] for p in kept_personas}
 
         n_kept = len(kept_personas)
 
-        disc_decimals = max(1, int(score_decimals))
         discussion_scores: Dict[str, float] = {
             str(p.get("uuid")): round(float(pre_scores.get(str(p.get("uuid")), 3.0)), disc_decimals)
             for p in kept_personas
         }
-
-        def _username_of(persona_raw: Dict[str, Any], uid: str) -> str:
-            u = str(persona_raw.get("username", "") or "").strip()
-            return u if u else f"user_{_short_uid(uid)}"
-
-        def _clean_one_line(s: str, n: int = 240) -> str:
-            s = str(s or "").replace("\r", " ").replace("\n", " ").strip()
-            s = re.sub(r"\s+", " ", s)
-            return s if len(s) <= n else (s[:n] + " ...")
-
-        def _strip_leading_bracket_name(msg: str) -> str:
-            m = re.match(r"^\s*\[[^\]]+\]\s*[:\-]?\s*(.*)$", msg.strip())
-            return (m.group(1).strip() if m else msg.strip())
 
         if use_discussion and n_kept > 0:
             for r in range(1, rounds + 1):
@@ -1704,15 +1802,12 @@ def run_one_book(
 
                 logger.info(
                     "STAGE START: %s | total_tasks=%d | visible_window=%d | workers=%d",
-                    stage_name,
-                    n_kept,
-                    window,
-                    workers,
+                    stage_name, n_kept, window, workers
                 )
 
                 tail = global_messages[-window:]
 
-                def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, float, float, str, str]:
+                def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, float, str]:
                     uid = str(persona_raw.get("uuid"))
                     username = _username_of(persona_raw, uid)
                     persona_txt = _persona_text(persona_raw) if use_persona else None
@@ -1768,19 +1863,16 @@ def run_one_book(
                         except Exception:
                             score_val = None
 
+                    new_sc = prev_sc
                     if score_val is not None:
                         new_sc = round(clamp_score(score_val), disc_decimals)
-                    else:
-                        new_sc = prev_sc
-
-                    delta_used = round(new_sc - prev_sc, disc_decimals)
 
                     chat_line = f"[{username}] (score {new_sc:.1f}): {body}"
                     chat_line = _clean_one_line(chat_line, n=320)
 
-                    return uid, username, float(delta_used), float(new_sc), chat_line, body
+                    return uid, username, float(new_sc), chat_line
 
-                round_rows: List[Tuple[str, str, float, float, str, str]] = []
+                round_rows: List[Tuple[str, str, float, str]] = []
                 if workers == 1:
                     for persona_raw in kept_personas:
                         round_rows.append(_disc_worker(persona_raw))
@@ -1790,162 +1882,36 @@ def run_one_book(
                         for fu in as_completed(futures):
                             round_rows.append(fu.result())
 
-                for uid, username, delta_used, new_sc, chat_line, body in sorted(round_rows, key=lambda x: x[0]):
+                # ✅ 固定顺序写入，便于复现
+                for uid, username, new_sc, chat_line in sorted(round_rows, key=lambda x: x[0]):
                     global_messages.append(chat_line)
+
                     per_agent_discussion[uid].append(
-                        {"round": r, "username": username, "score": float(new_sc), "message": body}
+                        {"round": r, "username": username, "score": float(new_sc), "message": _strip_leading_bracket_name(chat_line)}
                     )
                     discussion_scores[uid] = float(new_sc)
-                    stances[uid] = f"My current score is {new_sc:.1f}. {body}"
+                    stances[uid] = f"My current score is {new_sc:.1f}. {chat_line}"
+
+                    # ✅ 记录该轮分数
+                    score_history.setdefault(uid, [{"round": 0, "score": round(float(pre_scores.get(uid, 3.0)), disc_decimals)}])
+                    score_history[uid].append({"round": r, "score": float(new_sc)})
 
                 logger.info("STAGE DONE: %s | total_messages=%d", stage_name, len(global_messages))
 
         # -----------------------------------------------------
-        # STEP D: 最终打分
+        # ✅ 不再 Step D 最终评分：最终分数 = 最后一轮讨论分（或 round=0）
         # -----------------------------------------------------
-        post_scores: Dict[str, float] = {}
-        final_reviews: Dict[str, str] = {}
-
-        disc_tail = global_messages[-window:]
-
-        if n_kept > 0:
-            if method == "summary_based":
-                stage_name = "summary_final"
-                tracker.set_total(stage_name, n_kept)
-
-                monitor = getattr(llm, "monitor", None)
-                default_workers = max(1, min(max_workers_cfg, n_kept))
-                if isinstance(monitor, AdaptiveConcurrencyController):
-                    workers = monitor.suggest_workers(default_workers)
-                else:
-                    workers = default_workers
-                workers = max(1, min(workers, n_kept, HARD_MAX_WORKERS))
-
-                logger.info(
-                    "STAGE START: summary_final | total_tasks=%d | visible_window=%d | workers=%d",
-                    n_kept,
-                    window,
-                    workers,
-                )
-
-                def _summary_final_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
-                    uid = str(persona_raw.get("uuid"))
-                    username = _username_of(persona_raw, uid)
-                    persona_txt = _persona_text(persona_raw) if use_persona else None
-                    gs = base_payload[uid]["payload"]
-
-                    # ✅ 核心改动：不再传 current_score（避免锚定）
-                    system, user = prompt_summary_final(
-                        meta=meta,
-                        global_summary=gs,
-                        persona_text=persona_txt,
-                        username=username,
-                        discussion_tail=disc_tail if use_discussion else [],
-                    )
-                    _, parsed = llm.chat_json(
-                        system=system,
-                        user=user,
-                        temperature=float(cfg.llm.temperature),
-                        top_p=float(cfg.llm.top_p),
-                        max_tokens=int(cfg.llm.max_tokens),
-                        trace={
-                            "book": book_name,
-                            "agent": uid,
-                            "method": method,
-                            "stage": "summary_final",
-                            "chapter": None,
-                        },
-                    )
-                    obj = parsed or {}
-                    critique = str(obj.get("critique", "")).strip()
-
-                    try:
-                        score = float(obj.get("score", 3.0))
-                    except Exception:
-                        score = 3.0
-                    score = round(clamp_score(score), score_decimals)
-
-                    return uid, score, critique
-
-                with ThreadPoolExecutor(max_workers=workers) as ex:
-                    futures = [ex.submit(_summary_final_worker, p) for p in kept_personas]
-                    for fu in as_completed(futures):
-                        uid, sc, critique = fu.result()
-                        post_scores[uid] = sc
-                        final_reviews[uid] = critique
-
-                logger.info("STAGE DONE: summary_final")
-
+        final_scores: Dict[str, float] = {}
+        for p in personas_raw:
+            uid = str(p.get("uuid"))
+            keep = bool(decisions.get(uid, {}).get("keep", True))
+            if keep and use_discussion and uid in discussion_scores:
+                final_scores[uid] = float(discussion_scores[uid])
             else:
-                if use_discussion:
-                    stage_name = "finalize_after_discussion"
-                    tracker.set_total(stage_name, n_kept)
-
-                    monitor = getattr(llm, "monitor", None)
-                    default_workers = max(1, min(max_workers_cfg, n_kept))
-                    if isinstance(monitor, AdaptiveConcurrencyController):
-                        workers = monitor.suggest_workers(default_workers)
-                    else:
-                        workers = default_workers
-                    workers = max(1, min(workers, n_kept, HARD_MAX_WORKERS))
-
-                    logger.info(
-                        "STAGE START: finalize_after_discussion | total_tasks=%d | visible_window=%d | workers=%d",
-                        n_kept,
-                        window,
-                        workers,
-                    )
-
-                    def _finalize_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
-                        uid = str(persona_raw.get("uuid"))
-                        username = _username_of(persona_raw, uid)
-                        persona_txt = _persona_text(persona_raw) if use_persona else None
-
-                        baseline_sc = round(float(discussion_scores.get(uid, pre_scores.get(uid, 3.0))), disc_decimals)
-
-                        system, user = prompt_finalize_after_discussion(
-                            meta=meta,
-                            persona_text=persona_txt,
-                            username=username,
-                            pre_score=baseline_sc,
-                            discussion_tail=disc_tail,
-                        )
-                        _, parsed = llm.chat_json(
-                            system=system,
-                            user=user,
-                            temperature=float(cfg.llm.temperature),
-                            top_p=float(cfg.llm.top_p),
-                            max_tokens=int(cfg.llm.max_tokens),
-                            trace={
-                                "book": book_name,
-                                "agent": uid,
-                                "method": method,
-                                "stage": "finalize_after_discussion",
-                                "chapter": None,
-                            },
-                        )
-                        obj = parsed or {}
-
-                        try:
-                            fs = float(obj.get("final_score", baseline_sc))
-                        except Exception:
-                            fs = baseline_sc
-                        fs = round(clamp_score(fs), score_decimals)
-
-                        review = str(obj.get("final_review", "")).strip()
-                        return uid, fs, review
-
-                    with ThreadPoolExecutor(max_workers=workers) as ex:
-                        futures = [ex.submit(_finalize_worker, p) for p in kept_personas]
-                        for fu in as_completed(futures):
-                            uid, fs, review = fu.result()
-                            post_scores[uid] = fs
-                            final_reviews[uid] = review
-
-                    logger.info("STAGE DONE: finalize_after_discussion")
+                final_scores[uid] = float(pre_scores.get(uid, 3.0))
 
         # -----------------------------------------------------
-        # 输出 struct（保持原样）
+        # 输出 struct
         # -----------------------------------------------------
         agents_out: List[Dict[str, Any]] = []
 
@@ -1957,17 +1923,20 @@ def run_one_book(
                 "agent_uuid": uid,
                 "kept": keep,
                 "filtered_reason": None if keep else str(decisions.get(uid, {}).get("reason", "not_interested")),
-                "interest": {
-                    "keep": keep,
-                    "interest_score": float(decisions.get(uid, {}).get("interest_score", 50.0)),
-                    "reason": str(decisions.get(uid, {}).get("reason", "")),
-                }
-                if use_interest_filter
-                else None,
+                "interest": (
+                    {
+                        "keep": keep,
+                        "interest_score": float(decisions.get(uid, {}).get("interest_score", 50.0)),
+                        "reason": str(decisions.get(uid, {}).get("reason", "")),
+                    }
+                    if use_interest_filter
+                    else None
+                ),
                 "discussion": per_agent_discussion.get(uid, []) if (use_discussion and keep) else [],
-                "pre_discussion_score": float(pre_scores.get(uid, None)) if uid in pre_scores else None,
-                "post_discussion_score": float(post_scores.get(uid, None)) if uid in post_scores else None,
-                "final_review": final_reviews.get(uid, None),
+                "score_history": score_history.get(uid, []),                     # ✅ round=0..R
+                "pre_discussion_score": float(pre_scores.get(uid, 3.0)),         # ✅ round=0
+                "post_discussion_score": float(final_scores.get(uid, 3.0)),      # ✅ 最终采用讨论分
+                "final_review": None,                                            # ✅ 不再生成最终 review
                 "chapter_evals": None,
                 "incremental_steps": None,
                 "global_summary": None,
@@ -1981,8 +1950,6 @@ def run_one_book(
                     agent_obj["chapter_evals"] = payload
                 elif kind == "incremental":
                     agent_obj["incremental_steps"] = payload.get("steps", [])
-                    if (not use_discussion) and method == "incremental" and agent_obj.get("final_review") is None:
-                        agent_obj["final_review"] = str(payload.get("last_state", {}).get("review", "")).strip()
                 elif kind == "summary_based":
                     agent_obj["global_summary"] = payload
 
@@ -2001,6 +1968,8 @@ def run_one_book(
                 "n_agents_total": len(personas_raw),
                 "n_kept": len(kept_personas),
                 "filtered_pre_read": filtered_pre,
+                "discussion_rounds": int(rounds),
+                "discussion_enabled": bool(use_discussion),
             },
             "run_ts": run_ts,
         }
@@ -2015,5 +1984,6 @@ def run_one_book(
             writer.close()
         except Exception:
             pass
+
 
 
