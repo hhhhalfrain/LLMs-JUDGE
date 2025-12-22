@@ -1755,8 +1755,73 @@ def run_one_book(
                 uid = str(p.get("uuid"))
                 decisions[uid] = {"keep": True, "interest_score": 50.0, "reason": "interest_filter_disabled"}
 
+        # -----------------------------------------------------
+        # ✅ 强制淘汰 interest_score 最低的 25%：不参与后续讨论
+        # 规则：
+        # - 淘汰人数 = ceil(n_agents * 0.25)
+        # - 但最多淘汰到只剩 1 人（避免全灭）
+        # - 排序按 (interest_score, uid) 保证可复现
+        # -----------------------------------------------------
+        def _as_interest_score(x: Any, default: float = 50.0) -> float:
+            try:
+                v = float(x)
+            except Exception:
+                v = float(default)
+            # 裁剪到 [0, 100]
+            if v < 0.0:
+                v = 0.0
+            elif v > 100.0:
+                v = 100.0
+            return v
+
+        forced_drop_n = 0
+        forced_cutoff_score: Optional[float] = None
+        forced_dropped_uids: List[str] = []
+
+        if n_agents > 0:
+            # 先把每个 decisions 的 score 规范化一下（防止 None/字符串/越界）
+            ranked: List[Tuple[str, float]] = []
+            for p in personas_raw:
+                uid = str(p.get("uuid"))
+                obj = decisions.get(uid, {}) or {}
+                sc = _as_interest_score(obj.get("interest_score", 50.0), default=50.0)
+                obj["interest_score"] = sc
+                decisions[uid] = obj
+                ranked.append((uid, sc))
+
+            # 计算淘汰人数：最低 25%
+            forced_drop_n = int(math.ceil(n_agents * 0.25))
+            # 至少保留 1 个
+            forced_drop_n = min(forced_drop_n, max(0, n_agents - 1))
+
+            if forced_drop_n > 0:
+                ranked.sort(key=lambda t: (t[1], t[0]))  # (score asc, uid asc) => deterministic
+                forced_dropped = ranked[:forced_drop_n]
+                forced_dropped_uids = [uid for uid, _ in forced_dropped]
+                forced_cutoff_score = forced_dropped[-1][1]
+
+                for uid in forced_dropped_uids:
+                    obj = decisions.get(uid, {}) or {}
+                    # 无条件淘汰：不参与讨论
+                    obj["keep"] = False
+                    obj["forced_drop"] = True  # ✅ 可选：方便后处理区分“模型keep=false”和“强制淘汰”
+                    old_reason = str(obj.get("reason", "") or "").strip()
+                    tag = "forced_bottom_25_percent"
+                    obj["reason"] = f"{old_reason} | {tag}" if old_reason else tag
+                    decisions[uid] = obj
+
+        # 重新按 keep 生成 kept_personas（已包含强制淘汰效果）
         kept_personas = [p for p in personas_raw if bool(decisions.get(str(p.get("uuid")), {}).get("keep", True))]
         filtered_pre = len(personas_raw) - len(kept_personas)
+
+        if forced_drop_n > 0:
+            logger.info(
+                "INTEREST_FILTER FORCED DROP: dropped=%d (bottom 25%%) | cutoff_score=%.2f | example_uids=%s",
+                forced_drop_n,
+                float(forced_cutoff_score or 0.0),
+                ",".join(forced_dropped_uids[:8]),
+            )
+
         logger.info(
             "STAGE DONE: interest_filter | kept=%d/%d | filtered_pre_read=%d",
             len(kept_personas), n_agents, filtered_pre
