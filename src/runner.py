@@ -883,17 +883,6 @@ def prompt_finalize_after_discussion(
     return sys_json_only(), "".join(parts)
 
 
-def _counterpoint_block() -> str:
-    return "".join(
-        [
-            "Counterpoint rule (STRONGLY RECOMMENDED):\n",
-            "- If the group chat is one-sided (everyone agrees in the same direction, no real pushback),\n",
-            "  try to contribute at least ONE thoughtful counterpoint or alternative interpretation.\n",
-            "- Do NOT be contrarian just to be contrarian. Keep it plausible, text-grounded, and respectful.\n",
-            "- You may disagree partially (e.g., agree on pacing but question character motivation).\n\n",
-        ]
-    )
-
 def prompt_summary_initial_score(
     meta: Dict[str, Any],
     global_summary: Dict[str, Any],
@@ -1116,13 +1105,21 @@ def build_summary_agent(
 def _counterpoint_block() -> str:
     return "".join(
         [
-            "Counterpoint rule (STRONGLY RECOMMENDED):\n",
-            "- If the group chat is one-sided (everyone agrees in the same direction, no real pushback),\n",
-            "  try to contribute at least ONE thoughtful counterpoint or alternative interpretation.\n",
-            "- Do NOT be contrarian just to be contrarian. Keep it plausible, text-grounded, and respectful.\n",
-            "- You may disagree partially (e.g., agree on pacing but question character motivation).\n\n",
+            "Dissent & counterpoint rules (MANDATORY when the chat is one-sided):\n",
+            "- You are NOT here to agree with everyone. If most messages lean the same way, you MUST add at least ONE dissenting point.\n",
+            "- Your dissent must be text-grounded and plausible: cite a specific aspect (plot logic, character motivation, pacing, prose, stakes, originality).\n",
+            "- Use one of these counterpoint styles:\n",
+            "  (1) A concrete counter-example: 'If X is true, then Y should have happened, but we see Z.'\n",
+            "  (2) An alternative interpretation: 'Another read is that ...'\n",
+            "  (3) A risk/concern: 'This could backfire because ...'\n",
+            "  (4) A trade-off: 'Yes, but it costs ...'\n",
+            "- Do NOT be contrarian for its own sake. The goal is balance, not hostility.\n",
+            "- If the chat is already mixed (real disagreement exists), you MAY agree or refine—still add nuance.\n\n",
+            "One-sidedness detector (use this simple heuristic):\n",
+            "- If >= 70% of the last messages share the same sentiment direction (mostly praise or mostly criticism), treat it as one-sided.\n\n",
         ]
     )
+
 
 
 

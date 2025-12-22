@@ -37,11 +37,11 @@ from src.runner import (
 load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_nanotest.json"
+BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents t3                        "
+BATCH_ID = "4agents exp1"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -108,18 +108,18 @@ PER_BOOK_AGENT_WORKERS = 4
 # -----------------------------
 # ✅ 网格维度（全部可扫）
 # -----------------------------
-METHODS = ["summary_based"]
-USE_PERSONA_OPTS = [True]
-USE_INTEREST_FILTER_OPTS = [True]
+METHODS = ["aggregation", "incremental", "summary_based"]
+USE_PERSONA_OPTS = [False,True]
+USE_INTEREST_FILTER_OPTS = [False,True]
 
 # ✅ 只关心最高讨论轮数：程序内部会记录 round=0..R 的所有分数
-DISCUSSION_ROUNDS_OPTS = [4]          # 你可以写 [0,2,4]，但只会取 max=4
+DISCUSSION_ROUNDS_OPTS = [8]          # 你可以写 [0,2,4]，但只会取 max=4
 DISCUSSION_WINDOW_OPTS = [8]
 N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
 DISCUSSION_AFFECTS_SCORE_OPTS = [True]
 
-
+LBOOK, RBOOK = 0, 20  # 书本子区间 [LBOOK:RBOOK]，None 表示全量
 
 # ============================================================
 # 工具函数
@@ -791,6 +791,7 @@ def main() -> None:
     safe_mkdir(BASE_EVAL_ROOT)
 
     books = read_json(BOOKS_MERGED_JSON)
+    books = books[LBOOK:RBOOK] if (LBOOK is not None and RBOOK is not None) else books
     personas_raw = read_json(PERSONAS_JSON)
     experiments = build_experiments_grid()
 
