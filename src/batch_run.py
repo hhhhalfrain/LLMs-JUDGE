@@ -10,7 +10,6 @@ batch_run.py  (实验级断点续跑 + 多端点负载均衡 + STAGE2 结果复�
 """
 
 from __future__ import annotations
-
 import json
 import os
 import shutil
@@ -41,7 +40,7 @@ BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
 PERSONAS_JSON = PROJECT_ROOT / "data" / "personas_sample.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents exp1"
+BATCH_ID = "4agents exp2"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -59,24 +58,18 @@ QWEN_BASE_URLS = [
 # ✅ 每个千问端点可同时跑几个“书籍大任务”（可配置）
 # ============================================================
 
-# 方案 A：所有端点统一容量（推荐先用这个）
 QWEN_TASKS_PER_ENDPOINT = 4
 
-# 方案 B：逐端点配置（启用则覆盖方案 A）
-# 1) 用 list：长度必须等于 QWEN_BASE_URLS
 QWEN_TASKS_PER_ENDPOINT_LIST = None
-# 示例：
 # QWEN_TASKS_PER_ENDPOINT_LIST = [2, 2, 1, 3, 2]
 
-# 2) 或者用 dict：没写的端点回退到 QWEN_TASKS_PER_ENDPOINT
 QWEN_TASKS_PER_ENDPOINT_MAP = None
-# 示例：
 # QWEN_TASKS_PER_ENDPOINT_MAP = {
 #     "http://10.130.71.2:30071/v1": 2,
 #     "http://10.130.71.2:30921/v1": 3,
 # }
 
-# 顶层 worker 总上限（再怎么有 slots 也不会超过这个）
+# 顶层 worker 总上限
 MAX_EXPERIMENT_WORKERS = 999999
 
 # 错峰启动（建议小一点；0 代表不做错峰）
@@ -119,7 +112,7 @@ N_AGENTS_OPTS = [4]
 SCORE_DECIMALS_OPTS = [1]
 DISCUSSION_AFFECTS_SCORE_OPTS = [True]
 
-LBOOK, RBOOK = 0, 20  # 书本子区间 [LBOOK:RBOOK]，None 表示全量
+LBOOK, RBOOK = 0, 100  # 书本子区间 [LBOOK:RBOOK]，None 表示全量
 
 # ============================================================
 # 工具函数

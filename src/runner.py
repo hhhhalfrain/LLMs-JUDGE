@@ -744,61 +744,6 @@ def prompt_summary_incremental(
     return sys_json_only(), "".join(parts)
 
 
-def prompt_summary_final(
-    meta: Dict[str, Any],
-    global_summary: Dict[str, Any],
-    persona_text: Optional[str],
-    username: str,
-    discussion_tail: List[str],
-    rubric: Optional[Dict[str, str]] = None,
-) -> Tuple[str, str]:
-    book_name = meta["book_name"]
-    intro = meta["intro"]
-    author = str(meta.get("author", "")).strip()
-
-    gs_json = json.dumps(global_summary, ensure_ascii=False)
-
-    if rubric is None:
-        rubric = {
-            "Plot & structure": "coherence, stakes, payoff, clarity",
-            "Character work": "depth, motivation, arcs, believability",
-            "Prose & style": "voice, clarity, rhythm, imagery",
-            "Pacing": "momentum, scene effectiveness, drag vs rush",
-            "Originality": "freshness vs cliché, distinctive ideas",
-            "Emotional impact": "tension, empathy, resonance",
-        }
-    rubric_text = "\n".join([f"- {k}: {v}" for k, v in rubric.items()])
-
-    parts = [
-        "Novel metadata:\n",
-        f"Title: {book_name}\n",
-        (f"Author: {author}\n" if author else ""),
-        f"Blurb: {intro}\n\n",
-
-        _persona_block(persona_text),
-        f"Your chat username: {username}\n\n",
-
-        "Global summary JSON:\n",
-        f"{gs_json}\n\n",
-
-        (_discussion_block(discussion_tail) if discussion_tail else ""),
-
-        "Evaluation rubric:\n",
-        f"{rubric_text}\n\n",
-
-        "Task:\n",
-        "- Write ONE critique in English (<= 220 words) in THIS persona's voice.\n",
-        "- Give ONE overall score (1.0-5.0, 1 decimal).\n",
-        "- Base your judgment on the summary + rubric (+ discussion if provided).\n",
-        "- Do NOT assume any prior score.\n\n",
-
-        "Return JSON:\n",
-        "{\n",
-        '  "critique": string,\n',
-        '  "score": number (1.0-5.0)\n',
-        "}\n",
-    ]
-    return sys_json_only(), "".join(parts)
 
 
 def prompt_discussion_message(
@@ -847,38 +792,6 @@ def prompt_discussion_message(
         "{\n",
         '  "message": string,\n',
         '  "score": number\n',
-        "}\n",
-    ]
-    return sys_json_only(), "".join(parts)
-
-
-def prompt_finalize_after_discussion(
-    meta: Dict[str, Any],
-    persona_text: Optional[str],
-    username: str,
-    pre_score: float,
-    discussion_tail: List[str],
-) -> Tuple[str, str]:
-    book_name = meta["book_name"]
-    intro = meta["intro"]
-    author = str(meta.get("author", "")).strip()
-
-    parts = [
-        "Novel metadata:\n",
-        f"Title: {book_name}\n",
-        (f"Author: {author}\n" if author else ""),
-        f"Blurb: {intro}\n\n",
-        _persona_block(persona_text),
-        f"Your chat username: {username}\n",
-        f"Your current score (after discussion rounds): {pre_score:.1f}\n\n",
-        _discussion_block(discussion_tail),
-        "Task:\n",
-        "- Decide your final overall score (1.0-5.0, 1 decimal).\n",
-        "- Write a final short review (<= 180 words) in English, persona voice, referencing discussion points.\n\n",
-        "Return JSON:\n",
-        "{\n",
-        '  "final_score": number (1.0-5.0),\n',
-        '  "final_review": string\n',
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
@@ -1779,7 +1692,7 @@ def run_one_book(
         forced_cutoff_score: Optional[float] = None
         forced_dropped_uids: List[str] = []
 
-        if n_agents > 0:
+        if use_interest_filter and n_agents > 0:
             # 先把每个 decisions 的 score 规范化一下（防止 None/字符串/越界）
             ranked: List[Tuple[str, float]] = []
             for p in personas_raw:
