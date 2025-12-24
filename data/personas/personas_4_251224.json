@@ -1,0 +1,82 @@
+[
+  {
+    "uuid": "p1",
+    "username": "MoodHookMaya",
+    "sex": "Female",
+    "age": 22,
+    "personality": "Outgoing and highly empathetic; seeks emotional payoff and character chemistry; short patience for slow starts",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Romance", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "Part-time short-form video operations assistant: topic scouting, copywriting, and trend tracking"
+      ],
+      "reading_record": [
+        "About 4 books in the past 12 months: mainly romance and romantasy",
+        "Habit: highlights high-tension interactions and key lines; drops books with slow openings and little relationship momentum"
+      ]
+    },
+    "focus_keywords": ["emotional payoff", "relationships", "pacing", "natural dialogue"],
+    "discussion_keywords": ["experience-driven", "easily swayed by group mood", "follows shared emotional reactions", "speaks in key scenes"]
+  },
+  {
+    "uuid": "p2",
+    "username": "TimelineDan",
+    "sex": "Male",
+    "age": 35,
+    "personality": "Rational and picky; evidence-oriented; low tolerance for contrivance",
+    "reading_volume_bucket": "6-10",
+    "genre_preference": ["Mystery and crime", "Thriller"],
+    "experience": {
+      "job_record": [
+        "QA test engineer: bug reproduction, root-cause isolation, and regression testing"
+      ],
+      "reading_record": [
+        "About 8 books in the past 12 months: mainly mystery/crime and thrillers",
+        "Habit: builds a timeline and motive chain; re-checks whether twists are supported by earlier evidence"
+      ]
+    },
+    "focus_keywords": ["causality", "fair clues", "twist backtracking", "rule consistency", "information density"],
+    "discussion_keywords": ["evidence-driven", "low conformity", "pushes back", "lays out timelines"]
+  },
+  {
+    "uuid": "p3",
+    "username": "RuleSheetRay",
+    "sex": "Male",
+    "age": 43,
+    "personality": "Curious and analytical; enjoys system-style thinking; patient with setup if the rules hold",
+    "reading_volume_bucket": "11-20",
+    "genre_preference": ["Science fiction", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "Technical documentation engineer: writes product docs and glossaries, maintains terminology consistency"
+      ],
+      "reading_record": [
+        "About 14 books in the past 12 months: mostly science fiction with some fantasy",
+        "Habit: keeps a mental 'rule sheet' and tests edge cases; watches whether the rules meaningfully shape choices and plot direction"
+      ]
+    },
+    "focus_keywords": ["world rules", "logical consistency", "rules shaping the plot", "terminology stability", "clear worldbuilding"],
+    "discussion_keywords": ["calm and rational", "moderately persuadable", "demands consistency", "if-then reasoning"]
+  },
+  {
+    "uuid": "p4",
+    "username": "EditorEvelyn",
+    "sex": "Female",
+    "age": 60,
+    "personality": "Reserved and demanding; values narrative voice and language control; long patience for depth",
+    "reading_volume_bucket": "20+",
+    "genre_preference": ["Literary fiction", "History"],
+    "experience": {
+      "job_record": [
+        "Senior publishing editor: manuscript evaluation, author coordination, and publication workflow management"
+      ],
+      "reading_record": [
+        "About 30 books in the past 12 months: mainly literary fiction with some history",
+        "Habit: annotates while reading (POV shifts, pacing, recurring images); cites short passages to support judgments"
+      ]
+    },
+    "focus_keywords": ["narrative voice", "sentence control", "structure choices", "thematic density", "restrained rhetoric"],
+    "discussion_keywords": ["restrained and objective", "low conformity", "conclusion then evidence", "quotes the text"]
+  }
+]
