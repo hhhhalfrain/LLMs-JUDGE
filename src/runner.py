@@ -54,7 +54,21 @@ def extract_json_object(text: str) -> Dict[str, Any]:
 
 
 def clamp_score(x: float, lo: float = 1.0, hi: float = 5.0) -> float:
+    """保留旧函数（浮点裁剪），但评分链路现在强制整数分。"""
     return max(lo, min(hi, x))
+
+
+def clamp_int_score(x: Any, lo: int = 1, hi: int = 5) -> int:
+    """
+    ✅ 评分链路强制整数：把任何输入（含 float/str/None）转成 1..5 的整数分。
+    规则：先转 float -> 裁剪到 [lo, hi] -> round -> int
+    """
+    try:
+        v = float(x)
+    except Exception:
+        v = 3.0
+    v = max(float(lo), min(float(hi), v))
+    return int(round(v))
 
 
 def _short_uid(uid: str, n: int = 8) -> str:
@@ -299,7 +313,6 @@ class AdaptiveConcurrencyController:
             # 最终再裁剪一次
             self._current_workers = max(self.min_workers, min(self._current_workers, self.max_workers))
             return self._current_workers
-
 
 
 # =========================
@@ -649,12 +662,12 @@ def prompt_aggregation_chapter(
         f"{chapter_text}\n\n",
         "Task:\n",
         "- Plot summary of THIS chapter (2-4 sentences).\n",
-        "- Score THIS chapter (1.0-5.0, 1 decimal).\n",
+        "- Score THIS chapter as an INTEGER from 1 to 5.\n",
         "- Short comment in THIS persona's voice (2-4 sentences).\n\n",
         "Return JSON:\n",
         "{\n",
         '  "plot_summary": string,\n',
-        '  "score": number (1.0-5.0),\n',
+        '  "score": integer (1-5),\n',
         '  "comment": string\n',
         "}\n",
     ]
@@ -666,7 +679,7 @@ def prompt_incremental_update(
     chapter_text: str,
     prev_summary: str,
     prev_review: str,
-    prev_score: float,
+    prev_score: int,
     persona_text: Optional[str],
 ) -> Tuple[str, str]:
     book_name = meta["book_name"]
@@ -684,18 +697,18 @@ def prompt_incremental_update(
         f"{prev_summary if prev_summary else '(empty)'}\n\n",
         "Previous review:\n",
         f"{prev_review if prev_review else '(empty)'}\n\n",
-        f"Previous overall score (1.0-5.0): {prev_score:.1f}\n\n",
+        f"Previous overall score (1-5 integer): {int(prev_score)}\n\n",
         "Current chapter text:\n",
         f"{chapter_text}\n\n",
         "Task:\n",
         "- Update summary (<= 180 words).\n",
         "- Update review (<= 180 words) in persona voice.\n",
-        "- Update score (1.0-5.0, 1 decimal).\n\n",
+        "- Update score as an INTEGER from 1 to 5.\n\n",
         "Return JSON:\n",
         "{\n",
         '  "summary": string,\n',
         '  "review": string,\n',
-        '  "score": number (1.0-5.0)\n',
+        '  "score": integer (1-5)\n',
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
@@ -744,21 +757,19 @@ def prompt_summary_incremental(
     return sys_json_only(), "".join(parts)
 
 
-
-
 def prompt_discussion_message(
     meta: Dict[str, Any],
     persona_text: Optional[str],
     username: str,
     agent_stance: str,
-    current_score: float,
+    current_score: int,
     discussion_tail: List[str],
 ) -> Tuple[str, str]:
     """
-    讨论轮输出（对模型强约束，但不做代码强制校验）：
+    ✅ 讨论轮输出（强制整数分）：
     - 本轮建议更新评分（尽量不要保持不变）
     - 若讨论明显一边倒：尽可能提出一个合理的不同意见/反例/担忧点（强烈建议，不强制）
-    - JSON 不再输出 delta，只输出当前 score
+    - JSON 只输出当前 score（整数 1..5）
     """
     book_name = meta["book_name"]
     intro = meta["intro"]
@@ -772,7 +783,7 @@ def prompt_discussion_message(
         f"Blurb: {intro}\n\n",
         _persona_block(persona_text),
         f"Your chat username: {username}\n",
-        f"Your current score (before this round): {current_score:.1f}\n\n",
+        f"Your current score (before this round, 1-5 integer): {int(current_score)}\n\n",
         "Your current stance (your view so far):\n",
         f"{agent_stance}\n\n",
         "Latest group chat messages:\n",
@@ -780,8 +791,8 @@ def prompt_discussion_message(
         _counterpoint_block(),
         "Scoring update guidance:\n",
         "- You SHOULD update your score this round (try not to keep it unchanged).\n",
-        "- Recommended per-round change range: from -1.0 to +1.0.\n",
-        "- Keep score within [1.0, 5.0].\n\n",
+        "- Recommended per-round change range: from -1 to +1 (integer steps).\n",
+        "- Keep score within [1, 5].\n\n",
         "Task:\n",
         "- Write ONE short chat message (1-3 sentences), clean and respectful.\n",
         f"- The message MUST start with your name like: [{username}] ...\n",
@@ -791,7 +802,7 @@ def prompt_discussion_message(
         "Return JSON:\n",
         "{\n",
         '  "message": string,\n',
-        '  "score": number\n',
+        '  "score": integer (1-5)\n',
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
@@ -818,16 +829,15 @@ def prompt_summary_initial_score(
         "Global summary JSON:\n",
         f"{gs_json}\n\n",
         "Task:\n",
-        "- Based ONLY on the summary, give your INITIAL overall score (1.0-5.0, 1 decimal).\n",
+        "- Based ONLY on the summary, give your INITIAL overall score as an INTEGER from 1 to 5.\n",
         "- Provide a short stance (1-2 sentences) that you can use in group discussion.\n\n",
         "Return JSON:\n",
         "{\n",
-        '  "score": number (1.0-5.0),\n',
+        '  "score": integer (1-5),\n',
         '  "stance": string\n',
         "}\n",
     ]
     return sys_json_only(), "".join(parts)
-
 
 
 # =========================
@@ -840,11 +850,11 @@ def run_aggregation_agent(
     chapters: List[Dict[str, Any]],
     agent_uuid: str,
     persona_text: Optional[str],
-    score_decimals: int,
-) -> Tuple[List[Dict[str, Any]], float, str]:
+    score_decimals: int,  # ✅ 保留签名兼容，但整数评分不再使用小数位
+) -> Tuple[List[Dict[str, Any]], int, str]:
     prev_summaries: List[str] = []
     evals: List[Dict[str, Any]] = []
-    scores: List[float] = []
+    scores: List[int] = []
     last_comment = ""
 
     for ch in chapters:
@@ -872,29 +882,26 @@ def run_aggregation_agent(
         comment = str(obj.get("comment", "")).strip()
         last_comment = comment
 
-        try:
-            score = float(obj.get("score", 3.0))
-        except Exception:
-            score = 3.0
-        score = clamp_score(score)
-        score = round(score, score_decimals)
+        score = clamp_int_score(obj.get("score", 3))
 
         prev_summaries.append(plot_summary)
         scores.append(score)
         evals.append(
             {
                 "chapter_index": chapter_idx,
-                "score": score,
+                "score": int(score),
                 "plot_summary": plot_summary,
                 "comment": comment,
             }
         )
 
-    pre_score = round(sum(scores) / max(1, len(scores)), score_decimals)
+    avg = (sum(scores) / max(1, len(scores))) if scores else 3.0
+    pre_score = int(round(avg))
+
     stance = (
-        f"My current impression is around {pre_score:.1f}. Latest thought: {last_comment}"
+        f"My current impression is around {pre_score}. Latest thought: {last_comment}"
         if last_comment
-        else f"My current impression is around {pre_score:.1f}."
+        else f"My current impression is around {pre_score}."
     )
     return evals, pre_score, stance
 
@@ -906,26 +913,26 @@ def run_incremental_agent(
     chapters: List[Dict[str, Any]],
     agent_uuid: str,
     persona_text: Optional[str],
-    score_decimals: int,
-) -> Tuple[List[Dict[str, Any]], float, str, Dict[str, Any]]:
+    score_decimals: int,  # ✅ 保留签名兼容，但整数评分不再使用小数位
+) -> Tuple[List[Dict[str, Any]], int, str, Dict[str, Any]]:
     """
     Incremental-updated：
     - 每章更新 summary/review/score
-    - pre_score：所有 step score 的平均（全文平均分）
+    - pre_score：所有 step score 的平均（全文平均分），最终四舍五入到整数
     - last_state：最后一章后的 summary/review/score（用于无讨论时 final_review）
     """
     prev_summary = ""
     prev_review = ""
-    prev_score = 3.0
+    prev_score: int = 3
 
     steps: List[Dict[str, Any]] = []
-    scores: List[float] = []
+    scores: List[int] = []
 
     for ch in chapters:
         chapter_idx = int(ch["Number"])
         chapter_text = str(ch["text"])
 
-        system, user = prompt_incremental_update(meta, chapter_text, prev_summary, prev_review, float(prev_score), persona_text)
+        system, user = prompt_incremental_update(meta, chapter_text, prev_summary, prev_review, int(prev_score), persona_text)
         _, parsed = llm.chat_json(
             system=system,
             user=user,
@@ -950,31 +957,29 @@ def run_incremental_agent(
         if new_review is not None and str(new_review).strip():
             prev_review = str(new_review).strip()
 
-        try:
-            score = float(obj.get("score", prev_score))
-        except Exception:
-            score = prev_score
-        score = round(clamp_score(score), score_decimals)
-        prev_score = score
+        score = clamp_int_score(obj.get("score", prev_score))
+        prev_score = int(score)
 
-        scores.append(score)
+        scores.append(int(score))
         steps.append(
             {
                 "chapter_index": chapter_idx,
-                "score": score,
+                "score": int(score),
                 "summary": prev_summary,
                 "review": prev_review,
             }
         )
 
-    pre_score = round(sum(scores) / max(1, len(scores)), score_decimals)
+    avg = (sum(scores) / max(1, len(scores))) if scores else 3.0
+    pre_score = int(round(avg))
+
     stance = (
-        f"My current impression is around {pre_score:.1f}. Latest review: {prev_review}"
+        f"My current impression is around {pre_score}. Latest review: {prev_review}"
         if prev_review
-        else f"My current impression is around {pre_score:.1f}."
+        else f"My current impression is around {pre_score}."
     )
 
-    last_state = {"summary": prev_summary, "review": prev_review, "last_score": prev_score}
+    last_state = {"summary": prev_summary, "review": prev_review, "last_score": int(prev_score)}
     return steps, pre_score, stance, last_state
 
 
@@ -1016,6 +1021,7 @@ def build_summary_agent(
 
     return global_summary
 
+
 def _counterpoint_block() -> str:
     return "".join(
         [
@@ -1033,8 +1039,6 @@ def _counterpoint_block() -> str:
             "- If >= 70% of the last messages share the same sentiment direction (mostly praise or mostly criticism), treat it as one-sided.\n\n",
         ]
     )
-
-
 
 
 # =========================
@@ -1104,7 +1108,7 @@ def _safe_cfg_dump(cfg: Any) -> Dict[str, Any]:
             "discussion_rounds": getattr(cfg.experiment, "discussion_rounds", None),
             "discussion_window": getattr(cfg.experiment, "discussion_window", None),
             "n_agents": getattr(cfg.experiment, "n_agents", None),
-            "score_decimals": getattr(cfg.experiment, "score_decimals", None),
+            "score_decimals": getattr(cfg.experiment, "score_decimals", None),  # ✅ 可保留配置字段，但评分已强制整数
             "discussion_affects_score": getattr(cfg.experiment, "discussion_affects_score", None),
             "chapter_batch_size": getattr(cfg.experiment, "chapter_batch_size", None),
         }
@@ -1242,7 +1246,7 @@ def _ensure_base_eval_for_persona(
     {
       "kind": "aggregation" | "incremental" | "summary_based",
       "payload": ...,
-      "pre_discussion_score": float,
+      "pre_discussion_score": int,
       "stance": str
     }
     """
@@ -1265,7 +1269,7 @@ def _ensure_base_eval_for_persona(
         base_eval = {
             "kind": "aggregation",
             "payload": evals,
-            "pre_discussion_score": float(pre_score),
+            "pre_discussion_score": int(pre_score),
             "stance": stance,
         }
     elif method == "incremental":
@@ -1281,7 +1285,7 @@ def _ensure_base_eval_for_persona(
         base_eval = {
             "kind": "incremental",
             "payload": {"steps": steps, "last_state": last_state},
-            "pre_discussion_score": float(pre_score),
+            "pre_discussion_score": int(pre_score),
             "stance": stance,
         }
     elif method == "summary_based":
@@ -1297,7 +1301,7 @@ def _ensure_base_eval_for_persona(
         base_eval = {
             "kind": "summary_based",
             "payload": gs,
-            "pre_discussion_score": 3.0,
+            "pre_discussion_score": 3,
             "stance": stance,
         }
     else:
@@ -1320,9 +1324,11 @@ def evaluate_single_book(
     meta, chapters = _normalize_book_record(book_record)
     run_one_book(cfg, llm, logger, meta, chapters, personas_raw)
 
+
 def _shared_summary_key() -> str:
     # ✅改逻辑后建议换一个 key，避免读到你旧版本的 summary_based 缓存
     return "__shared_summary_v2__"
+
 
 # =========================
 #  主流程：单本书
@@ -1342,6 +1348,8 @@ def run_one_book(
     - STEP C：讨论（round=1..R）
     - ✅ 不再 STEP D 最终评分：最终分数直接使用讨论阶段的分数
     - 记录每个 agent 的 score_history：round=0(基线) + 每轮讨论后(round=1..R)
+
+    ✅ 评分规则：全链路强制整数 1..5（不再输出小数）
     """
 
     HARD_MAX_WORKERS = 4
@@ -1357,6 +1365,8 @@ def run_one_book(
 
     rounds = _get_int(cfg, "experiment.discussion_rounds", 0)
     window = _get_int(cfg, "experiment.discussion_window", 10)
+
+    # 读取但不再使用小数位配置：评分已强制整数
     score_decimals = _get_int(cfg, "experiment.score_decimals", 1)
 
     # ✅ 关键：DISCUSSION_ROUNDS=0 等价于 USE_DISCUSSION=False（不再看 cfg.experiment.use_discussion）
@@ -1399,7 +1409,7 @@ def run_one_book(
         # STEP A: 基线评测 / 或 shared summary
         # -----------------------------------------------------
         base_payload: Dict[str, Dict[str, Any]] = {}
-        pre_scores: Dict[str, float] = {}
+        pre_scores: Dict[str, int] = {}
         stances: Dict[str, str] = {}
 
         n_chapters = len(chapters)
@@ -1431,7 +1441,7 @@ def run_one_book(
                 base_eval = {
                     "kind": "summary_based",
                     "payload": gs,
-                    "pre_discussion_score": 0.0,
+                    "pre_discussion_score": 0,
                     "stance": "",
                 }
                 _save_base_eval_to_disk(
@@ -1461,7 +1471,7 @@ def run_one_book(
 
                 logger.info("STAGE START: summary_initial_score | total_tasks=%d | workers=%d", n_agents, workers)
 
-                def _init_score_worker(persona_raw: Dict[str, Any]) -> Tuple[str, float, str]:
+                def _init_score_worker(persona_raw: Dict[str, Any]) -> Tuple[str, int, str]:
                     uid = str(persona_raw.get("uuid"))
                     username = _username_of(persona_raw, uid)
                     persona_txt = _persona_text(persona_raw) if use_persona else None
@@ -1488,17 +1498,13 @@ def run_one_book(
                     )
                     obj = parsed or {}
 
-                    try:
-                        sc = float(obj.get("score", 3.0))
-                    except Exception:
-                        sc = 3.0
-                    sc = round(clamp_score(sc), score_decimals)
+                    sc = clamp_int_score(obj.get("score", 3))
 
                     stance = str(obj.get("stance", "")).strip()
                     if not stance:
-                        stance = f"My current score is {sc:.1f}."
+                        stance = f"My current score is {sc}."
 
-                    return uid, sc, stance
+                    return uid, int(sc), stance
 
                 if workers == 1:
                     rows = [_init_score_worker(p) for p in personas_raw]
@@ -1511,13 +1517,13 @@ def run_one_book(
 
                 for uid, sc, stance in rows:
                     base_payload[uid] = {"kind": "summary_based", "payload": gs}
-                    pre_scores[uid] = float(sc)
+                    pre_scores[uid] = int(sc)
                     stances[uid] = stance
 
                 logger.info("STAGE DONE: summary_initial_score")
 
         else:
-            # aggregation / incremental：保持你原来的基线评测逻辑
+            # aggregation / incremental：保持你原来的基线评测逻辑（但评分已强制整数）
             if use_persona:
                 personas_for_base = personas_raw
             else:
@@ -1588,7 +1594,7 @@ def run_one_book(
                     uid, pk, rec = _base_worker(personas_for_base[0])
                     base_result_by_key[pk] = rec
                     base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
-                    pre_scores[uid] = float(rec["pre_discussion_score"])
+                    pre_scores[uid] = int(rec["pre_discussion_score"])
                     stances[uid] = rec["stance"]
                 else:
                     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -1597,7 +1603,7 @@ def run_one_book(
                             uid, pk, rec = fu.result()
                             base_result_by_key[pk] = rec
                             base_payload[uid] = {"kind": rec["kind"], "payload": rec["payload"]}
-                            pre_scores[uid] = float(rec["pre_discussion_score"])
+                            pre_scores[uid] = int(rec["pre_discussion_score"])
                             stances[uid] = rec["stance"]
 
                 logger.info("STAGE DONE: base_eval | method=%s", method)
@@ -1608,16 +1614,16 @@ def run_one_book(
                         for p in personas_raw:
                             uid = str(p.get("uuid"))
                             base_payload[uid] = {"kind": shared["kind"], "payload": shared["payload"]}
-                            pre_scores[uid] = float(shared["pre_discussion_score"])
+                            pre_scores[uid] = int(shared["pre_discussion_score"])
                             stances[uid] = shared["stance"]
 
-        # ✅ 兜底：保证每个 agent 都有 round=0 分数
+        # ✅ 兜底：保证每个 agent 都有 round=0 分数（整数）
         for p in personas_raw:
             uid = str(p.get("uuid"))
             if uid not in pre_scores:
-                pre_scores[uid] = 3.0
+                pre_scores[uid] = 3
             if uid not in stances:
-                stances[uid] = f"My current score is {pre_scores[uid]:.1f}."
+                stances[uid] = f"My current score is {pre_scores[uid]}."
 
         # -----------------------------------------------------
         # STEP B: 兴趣筛选（保持原样）
@@ -1671,10 +1677,6 @@ def run_one_book(
 
         # -----------------------------------------------------
         # ✅ 强制淘汰 interest_score 最低的 25%：不参与后续讨论
-        # 规则：
-        # - 淘汰人数 = ceil(n_agents * 0.25)
-        # - 但最多淘汰到只剩 1 人（避免全灭）
-        # - 排序按 (interest_score, uid) 保证可复现
         # -----------------------------------------------------
         def _as_interest_score(x: Any, default: float = 50.0) -> float:
             try:
@@ -1693,7 +1695,6 @@ def run_one_book(
         forced_dropped_uids: List[str] = []
 
         if use_interest_filter and n_agents > 0:
-            # 先把每个 decisions 的 score 规范化一下（防止 None/字符串/越界）
             ranked: List[Tuple[str, float]] = []
             for p in personas_raw:
                 uid = str(p.get("uuid"))
@@ -1703,28 +1704,24 @@ def run_one_book(
                 decisions[uid] = obj
                 ranked.append((uid, sc))
 
-            # 计算淘汰人数：最低 25%
             forced_drop_n = int(math.ceil(n_agents * 0.25))
-            # 至少保留 1 个
             forced_drop_n = min(forced_drop_n, max(0, n_agents - 1))
 
             if forced_drop_n > 0:
-                ranked.sort(key=lambda t: (t[1], t[0]))  # (score asc, uid asc) => deterministic
+                ranked.sort(key=lambda t: (t[1], t[0]))
                 forced_dropped = ranked[:forced_drop_n]
                 forced_dropped_uids = [uid for uid, _ in forced_dropped]
                 forced_cutoff_score = forced_dropped[-1][1]
 
                 for uid in forced_dropped_uids:
                     obj = decisions.get(uid, {}) or {}
-                    # 无条件淘汰：不参与讨论
                     obj["keep"] = False
-                    obj["forced_drop"] = True  # ✅ 可选：方便后处理区分“模型keep=false”和“强制淘汰”
+                    obj["forced_drop"] = True
                     old_reason = str(obj.get("reason", "") or "").strip()
                     tag = "forced_bottom_25_percent"
                     obj["reason"] = f"{old_reason} | {tag}" if old_reason else tag
                     decisions[uid] = obj
 
-        # 重新按 keep 生成 kept_personas（已包含强制淘汰效果）
         kept_personas = [p for p in personas_raw if bool(decisions.get(str(p.get("uuid")), {}).get("keep", True))]
         filtered_pre = len(personas_raw) - len(kept_personas)
 
@@ -1742,13 +1739,12 @@ def run_one_book(
         )
 
         # -----------------------------------------------------
-        # ✅ 记录 round=0..R 的分数轨迹
+        # ✅ 记录 round=0..R 的分数轨迹（整数）
         # -----------------------------------------------------
-        disc_decimals = max(1, int(score_decimals))
         score_history: Dict[str, List[Dict[str, Any]]] = {}
         for p in personas_raw:
             uid = str(p.get("uuid"))
-            score_history[uid] = [{"round": 0, "score": round(float(pre_scores.get(uid, 3.0)), disc_decimals)}]
+            score_history[uid] = [{"round": 0, "score": int(pre_scores.get(uid, 3))}]
 
         # -----------------------------------------------------
         # STEP C: 讨论（round=1..R）
@@ -1758,8 +1754,8 @@ def run_one_book(
 
         n_kept = len(kept_personas)
 
-        discussion_scores: Dict[str, float] = {
-            str(p.get("uuid")): round(float(pre_scores.get(str(p.get("uuid")), 3.0)), disc_decimals)
+        discussion_scores: Dict[str, int] = {
+            str(p.get("uuid")): int(pre_scores.get(str(p.get("uuid")), 3))
             for p in kept_personas
         }
 
@@ -1783,13 +1779,13 @@ def run_one_book(
 
                 tail = global_messages[-window:]
 
-                def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, float, str]:
+                def _disc_worker(persona_raw: Dict[str, Any]) -> Tuple[str, str, int, str]:
                     uid = str(persona_raw.get("uuid"))
                     username = _username_of(persona_raw, uid)
                     persona_txt = _persona_text(persona_raw) if use_persona else None
 
-                    prev_sc = round(float(discussion_scores.get(uid, pre_scores.get(uid, 3.0))), disc_decimals)
-                    stance = stances.get(uid, f"My current score is {prev_sc:.1f}.")
+                    prev_sc = int(discussion_scores.get(uid, pre_scores.get(uid, 3)))
+                    stance = stances.get(uid, f"My current score is {prev_sc}.")
 
                     system, user = prompt_discussion_message(
                         meta=meta,
@@ -1832,6 +1828,7 @@ def run_one_book(
                         except Exception:
                             score_val = None
 
+                    # 兼容旧 delta（即使 prompt 不再要求输出 delta）
                     if score_val is None:
                         try:
                             if obj.get("delta", None) is not None:
@@ -1841,14 +1838,14 @@ def run_one_book(
 
                     new_sc = prev_sc
                     if score_val is not None:
-                        new_sc = round(clamp_score(score_val), disc_decimals)
+                        new_sc = clamp_int_score(score_val)
 
-                    chat_line = f"[{username}] (score {new_sc:.1f}): {body}"
+                    chat_line = f"[{username}] (score {new_sc}): {body}"
                     chat_line = _clean_one_line(chat_line, n=320)
 
-                    return uid, username, float(new_sc), chat_line
+                    return uid, username, int(new_sc), chat_line
 
-                round_rows: List[Tuple[str, str, float, str]] = []
+                round_rows: List[Tuple[str, str, int, str]] = []
                 if workers == 1:
                     for persona_raw in kept_personas:
                         round_rows.append(_disc_worker(persona_raw))
@@ -1863,28 +1860,27 @@ def run_one_book(
                     global_messages.append(chat_line)
 
                     per_agent_discussion[uid].append(
-                        {"round": r, "username": username, "score": float(new_sc), "message": _strip_leading_bracket_name(chat_line)}
+                        {"round": r, "username": username, "score": int(new_sc), "message": _strip_leading_bracket_name(chat_line)}
                     )
-                    discussion_scores[uid] = float(new_sc)
-                    stances[uid] = f"My current score is {new_sc:.1f}. {chat_line}"
+                    discussion_scores[uid] = int(new_sc)
+                    stances[uid] = f"My current score is {new_sc}. {chat_line}"
 
-                    # ✅ 记录该轮分数
-                    score_history.setdefault(uid, [{"round": 0, "score": round(float(pre_scores.get(uid, 3.0)), disc_decimals)}])
-                    score_history[uid].append({"round": r, "score": float(new_sc)})
+                    score_history.setdefault(uid, [{"round": 0, "score": int(pre_scores.get(uid, 3))}])
+                    score_history[uid].append({"round": r, "score": int(new_sc)})
 
                 logger.info("STAGE DONE: %s | total_messages=%d", stage_name, len(global_messages))
 
         # -----------------------------------------------------
         # ✅ 不再 Step D 最终评分：最终分数 = 最后一轮讨论分（或 round=0）
         # -----------------------------------------------------
-        final_scores: Dict[str, float] = {}
+        final_scores: Dict[str, int] = {}
         for p in personas_raw:
             uid = str(p.get("uuid"))
             keep = bool(decisions.get(uid, {}).get("keep", True))
             if keep and use_discussion and uid in discussion_scores:
-                final_scores[uid] = float(discussion_scores[uid])
+                final_scores[uid] = int(discussion_scores[uid])
             else:
-                final_scores[uid] = float(pre_scores.get(uid, 3.0))
+                final_scores[uid] = int(pre_scores.get(uid, 3))
 
         # -----------------------------------------------------
         # 输出 struct
@@ -1909,10 +1905,10 @@ def run_one_book(
                     else None
                 ),
                 "discussion": per_agent_discussion.get(uid, []) if (use_discussion and keep) else [],
-                "score_history": score_history.get(uid, []),                     # ✅ round=0..R
-                "pre_discussion_score": float(pre_scores.get(uid, 3.0)),         # ✅ round=0
-                "post_discussion_score": float(final_scores.get(uid, 3.0)),      # ✅ 最终采用讨论分
-                "final_review": None,                                            # ✅ 不再生成最终 review
+                "score_history": score_history.get(uid, []),               # ✅ round=0..R（整数）
+                "pre_discussion_score": int(pre_scores.get(uid, 3)),       # ✅ round=0（整数）
+                "post_discussion_score": int(final_scores.get(uid, 3)),    # ✅ 最终采用讨论分（整数）
+                "final_review": None,
                 "chapter_evals": None,
                 "incremental_steps": None,
                 "global_summary": None,
@@ -1960,6 +1956,3 @@ def run_one_book(
             writer.close()
         except Exception:
             pass
-
-
-
