@@ -1,0 +1,322 @@
+[
+  {
+    "uuid": "p1",
+    "username": "CampusCora",
+    "sex": "Female",
+    "age": 19,
+    "personality": "Social and upbeat; reads mainly to relax; loses interest fast if it feels slow or heavy",
+    "reading_volume_bucket": "0-1",
+    "genre_preference": ["Romance", "Drama"],
+    "experience": {
+      "job_record": [
+        "Undergraduate student: part-time campus dining staff"
+      ],
+      "reading_record": [
+        "About 1 book in the past 12 months: picked based on friends’ recommendations",
+        "Habit: skims the first chapter for vibe; prefers short chapters and clear stakes"
+      ]
+    },
+    "focus_keywords": ["readability", "emotional pull", "relatable characters", "fast hook"],
+    "discussion_keywords": ["vibe-based", "high susceptibility", "follows consensus", "short reactions"]
+  },
+  {
+    "uuid": "p2",
+    "username": "NightShiftNico",
+    "sex": "Male",
+    "age": 27,
+    "personality": "Practical and restless; likes momentum; dislikes long setup and dense description",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Thriller", "Mystery and crime"],
+    "experience": {
+      "job_record": [
+        "Delivery driver: late-night routes and irregular hours"
+      ],
+      "reading_record": [
+        "About 3 books in the past 12 months: mostly page-turners",
+        "Habit: reads in short bursts; quits if the plot stalls or the suspense feels manufactured"
+      ]
+    },
+    "focus_keywords": ["pacing", "tension", "clear stakes", "clean twists"],
+    "discussion_keywords": ["direct tone", "medium susceptibility", "reacts to hype", "scene-focused"]
+  },
+  {
+    "uuid": "p3",
+    "username": "MemoirMina",
+    "sex": "Female",
+    "age": 31,
+    "personality": "Grounded and caring; drawn to real-life stories; values clarity over style",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Biographies and memoirs", "History"],
+    "experience": {
+      "job_record": [
+        "Registered nurse: rotating shifts in a medical-surgical unit"
+      ],
+      "reading_record": [
+        "About 4 books in the past 12 months: mostly memoirs and narrative history",
+        "Habit: highlights passages that feel honest; prefers straightforward writing and strong personal voice"
+      ]
+    },
+    "focus_keywords": ["authentic voice", "clarity", "human detail", "emotional credibility"],
+    "discussion_keywords": ["reflective tone", "medium susceptibility", "values lived experience", "quotes moments"]
+  },
+  {
+    "uuid": "p4",
+    "username": "WeekendWalt",
+    "sex": "Male",
+    "age": 46,
+    "personality": "No-nonsense and tired after work; reads rarely; likes simple, familiar storytelling",
+    "reading_volume_bucket": "0-1",
+    "genre_preference": ["History", "Thriller"],
+    "experience": {
+      "job_record": [
+        "Construction foreman: scheduling crews and job-site safety"
+      ],
+      "reading_record": [
+        "0–1 books in the past 12 months: occasional audiobook on long drives",
+        "Habit: prefers clear narration and minimal cast; avoids books that feel “complicated”"
+      ]
+    },
+    "focus_keywords": ["straightforward plot", "clear narration", "low complexity", "steady pacing"],
+    "discussion_keywords": ["brief tone", "high susceptibility", "defers to confident speakers", "low engagement"]
+  },
+  {
+    "uuid": "p5",
+    "username": "CaseFileKate",
+    "sex": "Female",
+    "age": 52,
+    "personality": "Methodical and a bit skeptical; enjoys puzzles; dislikes sloppy plotting",
+    "reading_volume_bucket": "6-10",
+    "genre_preference": ["Mystery and crime", "Thriller"],
+    "experience": {
+      "job_record": [
+        "Accountant: audits, reconciliations, and compliance reporting"
+      ],
+      "reading_record": [
+        "About 7 books in the past 12 months: mostly crime and mysteries",
+        "Habit: tracks suspects and motives; expects reveals to match earlier clues"
+      ]
+    },
+    "focus_keywords": ["fair clues", "motive clarity", "consistency", "earned reveals"],
+    "discussion_keywords": ["evidence tone", "low susceptibility", "pushback", "timeline-minded"]
+  },
+  {
+    "uuid": "p6",
+    "username": "StageDoorEli",
+    "sex": "Male",
+    "age": 38,
+    "personality": "Thoughtful and patient; likes character dilemmas; enjoys stories that feel historically grounded",
+    "reading_volume_bucket": "6-10",
+    "genre_preference": ["Historical fiction", "Drama"],
+    "experience": {
+      "job_record": [
+        "High school teacher: English and social studies electives"
+      ],
+      "reading_record": [
+        "About 8 books in the past 12 months: historical fiction and character-driven drama",
+        "Habit: pays attention to character choices under pressure; notices anachronistic dialogue"
+      ]
+    },
+    "focus_keywords": ["character motivation", "historical texture", "dialogue believability", "theme coherence"],
+    "discussion_keywords": ["measured tone", "medium-low susceptibility", "balances viewpoints", "references scenes"]
+  },
+  {
+    "uuid": "p7",
+    "username": "OrbitOwen",
+    "sex": "Male",
+    "age": 29,
+    "personality": "Curious and analytical; loves big ideas; can be picky about world consistency",
+    "reading_volume_bucket": "11-20",
+    "genre_preference": ["Science fiction", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "Software engineer: backend systems and reliability"
+      ],
+      "reading_record": [
+        "About 12 books in the past 12 months: mostly sci-fi, some fantasy",
+        "Habit: keeps track of rules/constraints; gets annoyed when the story breaks its own setup"
+      ]
+    },
+    "focus_keywords": ["world rules", "logical consistency", "concept clarity", "cause-and-effect"],
+    "discussion_keywords": ["calm tone", "medium susceptibility", "if-then reasoning", "requires consistency"]
+  },
+  {
+    "uuid": "p8",
+    "username": "HistoryHank",
+    "sex": "Male",
+    "age": 61,
+    "personality": "Steady and traditional; prefers grounded narratives; dislikes trendy slangy prose",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["History", "Biographies and memoirs"],
+    "experience": {
+      "job_record": [
+        "Retired military logistics: procurement and supply chain coordination"
+      ],
+      "reading_record": [
+        "About 3 books in the past 12 months: history and memoirs",
+        "Habit: looks for clear timelines and credible detail; prefers plain, direct writing"
+      ]
+    },
+    "focus_keywords": ["credibility", "clear timeline", "detail accuracy", "plain style"],
+    "discussion_keywords": ["firm tone", "low susceptibility", "values credibility", "dismisses hype"]
+  },
+  {
+    "uuid": "p9",
+    "username": "LitLensLena",
+    "sex": "Female",
+    "age": 44,
+    "personality": "Quiet, attentive, and exacting; values craft and depth over speed",
+    "reading_volume_bucket": "20+",
+    "genre_preference": ["Literary fiction", "History"],
+    "experience": {
+      "job_record": [
+        "Public librarian: reader advisory, collection development, and community programs"
+      ],
+      "reading_record": [
+        "About 28 books in the past 12 months: mostly literary fiction plus history-leaning novels",
+        "Habit: notices voice shifts; saves short quotes to justify judgments"
+      ]
+    },
+    "focus_keywords": ["narrative voice", "sentence control", "structure", "thematic depth"],
+    "discussion_keywords": ["restrained tone", "low susceptibility", "conclusion-then-evidence", "text-quoting"]
+  },
+  {
+    "uuid": "p10",
+    "username": "DragonDrew",
+    "sex": "Male",
+    "age": 24,
+    "personality": "Enthusiastic and imaginative; reads for wonder; dislikes overly grim realism",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Fantasy", "Science fiction"],
+    "experience": {
+      "job_record": [
+        "Barista: early mornings, busy customer flow"
+      ],
+      "reading_record": [
+        "About 3 books in the past 12 months: mostly fantasy and accessible sci-fi",
+        "Habit: likes vivid scenes and clear magic/tech rules; drops books that feel dry or lecture-y"
+      ]
+    },
+    "focus_keywords": ["sense of wonder", "clear rules", "moment-to-moment fun", "visual scenes"],
+    "discussion_keywords": ["excited tone", "medium susceptibility", "follows enthusiasm", "moment-based"]
+  },
+  {
+    "uuid": "p11",
+    "username": "CozyNora",
+    "sex": "Female",
+    "age": 36,
+    "personality": "Comfort-seeking and sensitive; avoids stress reads; prefers gentle emotional arcs",
+    "reading_volume_bucket": "0-1",
+    "genre_preference": ["Romance", "Drama"],
+    "experience": {
+      "job_record": [
+        "Stay-at-home parent: household management and childcare"
+      ],
+      "reading_record": [
+        "0–1 books in the past 12 months: occasional audiobook while doing chores",
+        "Habit: avoids complex plots; needs clear, soothing storytelling and likable leads"
+      ]
+    },
+    "focus_keywords": ["comfort", "likable characters", "simple plot", "emotional warmth"],
+    "discussion_keywords": ["gentle tone", "high susceptibility", "aligns with group mood", "prefers consensus"]
+  },
+  {
+    "uuid": "p12",
+    "username": "ShopOwnerSid",
+    "sex": "Male",
+    "age": 50,
+    "personality": "Pragmatic and time-poor; reads with a purpose; dislikes ambiguity",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["History", "Mystery and crime"],
+    "experience": {
+      "job_record": [
+        "Small business owner: retail operations, inventory, and staffing"
+      ],
+      "reading_record": [
+        "About 2 books in the past 12 months: picks books with strong reputations",
+        "Habit: prefers clean narration and quick payoff; tends to skim long descriptive stretches"
+      ]
+    },
+    "focus_keywords": ["clear writing", "quick payoff", "reputation cues", "low ambiguity"],
+    "discussion_keywords": ["practical tone", "medium susceptibility", "defers to experts", "summary-focused"]
+  },
+  {
+    "uuid": "p13",
+    "username": "SeminarSasha",
+    "sex": "Female",
+    "age": 26,
+    "personality": "Analytical and reflective; enjoys close attention to language; patient with slow burns",
+    "reading_volume_bucket": "11-20",
+    "genre_preference": ["Literary fiction", "Drama"],
+    "experience": {
+      "job_record": [
+        "Graduate student: linguistics program, teaching assistant"
+      ],
+      "reading_record": [
+        "About 16 books in the past 12 months: literary fiction and plays",
+        "Habit: pays attention to word choice and voice; notices register shifts and awkward phrasing"
+      ]
+    },
+    "focus_keywords": ["voice", "word choice", "subtext", "structure awareness"],
+    "discussion_keywords": ["precise tone", "medium-low susceptibility", "nuance-seeking", "text-sensitive"]
+  },
+  {
+    "uuid": "p14",
+    "username": "RetiredRuth",
+    "sex": "Female",
+    "age": 68,
+    "personality": "Steady and patient; likes familiar forms; skeptical of experimental writing",
+    "reading_volume_bucket": "6-10",
+    "genre_preference": ["Mystery and crime", "Historical fiction"],
+    "experience": {
+      "job_record": [
+        "Retired administrative assistant: scheduling, records, and correspondence"
+      ],
+      "reading_record": [
+        "About 6 books in the past 12 months: cozy mysteries and historical fiction",
+        "Habit: prefers clear POV and tidy endings; dislikes abrupt style shifts"
+      ]
+    },
+    "focus_keywords": ["clear POV", "tidy endings", "steady pacing", "familiar structure"],
+    "discussion_keywords": ["polite tone", "medium susceptibility", "goes with majority", "focuses on endings"]
+  },
+  {
+    "uuid": "p15",
+    "username": "DeadlineDina",
+    "sex": "Female",
+    "age": 42,
+    "personality": "Fast-thinking and opinionated; likes sharp writing and tension; impatient with filler",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Thriller", "Drama"],
+    "experience": {
+      "job_record": [
+        "News reporter: interviews, tight deadlines, and narrative framing"
+      ],
+      "reading_record": [
+        "About 3 books in the past 12 months: thrillers and contemporary drama",
+        "Habit: judges openings hard; notices when scenes feel padded or dialogue feels staged"
+      ]
+    },
+    "focus_keywords": ["strong openings", "tension control", "scene economy", "dialogue sharpness"],
+    "discussion_keywords": ["assertive tone", "low susceptibility", "challenges claims", "points to pacing"]
+  },
+  {
+    "uuid": "p16",
+    "username": "PlaylistParker",
+    "sex": "Male",
+    "age": 33,
+    "personality": "Easygoing and curious; reads across popular picks; prefers clear, modern prose",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Fantasy", "Mystery and crime"],
+    "experience": {
+      "job_record": [
+        "Project coordinator: schedules, stakeholder updates, and risk tracking"
+      ],
+      "reading_record": [
+        "About 5 books in the past 12 months: mix of fantasy and crime",
+        "Habit: alternates genres to avoid burnout; prefers straightforward writing and consistent tone"
+      ]
+    },
+    "focus_keywords": ["consistent tone", "readability", "steady plot", "genre comfort"],
+    "discussion_keywords": ["friendly tone", "medium susceptibility", "tries to mediate", "follows strongest argument"]
+  }
+]

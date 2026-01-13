@@ -37,10 +37,10 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 BOOKS_MERGED_JSON = PROJECT_ROOT / "data" / "books" / "merged_books_fixed.json"
-PERSONAS_JSON = PROJECT_ROOT / "data" / "personas" / "personas_4_251224.json"
+PERSONAS_JSON = PROJECT_ROOT / "data" / "personas" / "personas_16.json"
 
 # 续跑关键：固定这个目录名，重复运行会在同一批次上跳过/删除重跑
-BATCH_ID = "4agents exp4"
+BATCH_ID = "16agents exp2"
 BATCH_ROOT = PROJECT_ROOT / "runs" / "batch" / BATCH_ID
 OUTPUTS_ROOT = BATCH_ROOT / "outputs"
 BASE_EVAL_ROOT = BATCH_ROOT / "base_eval"  # 全局基线评测缓存（跨 experiment 复用）
@@ -58,7 +58,7 @@ QWEN_BASE_URLS = [
 # ✅ 每个千问端点可同时跑几个“书籍大任务”（可配置）
 # ============================================================
 
-QWEN_TASKS_PER_ENDPOINT = 4
+QWEN_TASKS_PER_ENDPOINT = 5
 
 QWEN_TASKS_PER_ENDPOINT_LIST = None
 # QWEN_TASKS_PER_ENDPOINT_LIST = [2, 2, 1, 3, 2]
@@ -95,7 +95,7 @@ RETRY_JITTER = 0.2
 FAIL_FAST = True
 
 # runner 内部：同一本书 agent 并发的上限（自适应控制会在这个范围内浮动）
-PER_BOOK_AGENT_WORKERS = 4
+PER_BOOK_AGENT_WORKERS = 8
 
 
 # -----------------------------
@@ -108,7 +108,7 @@ USE_INTEREST_FILTER_OPTS = [False,True]
 # ✅ 只关心最高讨论轮数：程序内部会记录 round=0..R 的所有分数
 DISCUSSION_ROUNDS_OPTS = [8]          # 你可以写 [0,2,4]，但只会取 max=4
 DISCUSSION_WINDOW_OPTS = [8]
-N_AGENTS_OPTS = [4]
+N_AGENTS_OPTS = [16]
 SCORE_DECIMALS_OPTS = [1]
 DISCUSSION_AFFECTS_SCORE_OPTS = [True]
 

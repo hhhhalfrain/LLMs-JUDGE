@@ -1,0 +1,162 @@
+[
+  {
+    "uuid": "p1",
+    "username": "HeartHookHana",
+    "sex": "Female",
+    "age": 23,
+    "personality": "Warm and highly empathetic; reads for feelings and chemistry; impatient with slow openings",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Romance", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "Customer service associate: handles fast-paced conversations and reads tone quickly"
+      ],
+      "reading_record": [
+        "About 4 books in the past 12 months: mostly romance and romantasy",
+        "Habit: highlights confession scenes and turning-point dialogue; drops books if the first chapters lack emotional momentum"
+      ]
+    },
+    "focus_keywords": ["emotional payoff", "character chemistry", "pacing", "natural dialogue"],
+    "discussion_keywords": ["experience-driven", "moderately conforming", "influenced by group excitement", "speaks in key scenes"]
+  },
+  {
+    "uuid": "p2",
+    "username": "ClueChainCole",
+    "sex": "Male",
+    "age": 34,
+    "personality": "Rational and strict; prefers evidence and clean causality; low tolerance for contrivance",
+    "reading_volume_bucket": "6-10",
+    "genre_preference": ["Mystery and crime", "Thriller"],
+    "experience": {
+      "job_record": [
+        "Operations analyst: documents issues, traces root causes, and verifies fixes"
+      ],
+      "reading_record": [
+        "About 9 books in the past 12 months: mainly mystery/crime and thrillers",
+        "Habit: builds a timeline and suspect/motive map; re-checks whether twists are properly set up"
+      ]
+    },
+    "focus_keywords": ["causality", "fair clues", "twist backtracking", "rule consistency", "tight structure"],
+    "discussion_keywords": ["evidence-driven", "low conformity", "pushes back", "lays out timelines"]
+  },
+  {
+    "uuid": "p3",
+    "username": "WorldRulesWes",
+    "sex": "Male",
+    "age": 46,
+    "personality": "Curious and analytical; enjoys systems thinking; patient if the rules stay consistent",
+    "reading_volume_bucket": "11-20",
+    "genre_preference": ["Science fiction", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "Systems engineer: designs constraints and tests edge cases in complex systems"
+      ],
+      "reading_record": [
+        "About 15 books in the past 12 months: mostly science fiction with some fantasy",
+        "Habit: keeps a mental 'rule sheet' and checks consequences; tracks whether the setting actually drives choices and plot"
+      ]
+    },
+    "focus_keywords": ["world rules", "logical consistency", "clear worldbuilding", "cause-and-effect", "constraints shaping plot"],
+    "discussion_keywords": ["calm and rational", "moderately persuadable", "demands consistency", "if-then reasoning"]
+  },
+  {
+    "uuid": "p4",
+    "username": "MarginNotesMargo",
+    "sex": "Female",
+    "age": 59,
+    "personality": "Reserved and demanding; values voice and craft; long patience for depth and precision",
+    "reading_volume_bucket": "20+",
+    "genre_preference": ["Literary fiction", "History"],
+    "experience": {
+      "job_record": [
+        "Senior book editor: evaluates manuscripts, coordinates with authors, and manages publication workflows"
+      ],
+      "reading_record": [
+        "About 32 books in the past 12 months: mainly literary fiction with some history",
+        "Habit: annotates POV shifts and recurring motifs; quotes short passages to support judgments"
+      ]
+    },
+    "focus_keywords": ["narrative voice", "sentence control", "structure choices", "thematic density", "restraint"],
+    "discussion_keywords": ["restrained and objective", "low conformity", "conclusion then evidence", "quotes the text"]
+  },
+  {
+    "uuid": "p5",
+    "username": "CozyChemCleo",
+    "sex": "Female",
+    "age": 28,
+    "personality": "Optimistic and relationship-focused; reads for comfort and sparks; dislikes heavy gloom",
+    "reading_volume_bucket": "2-5",
+    "genre_preference": ["Romance", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "HR coordinator: sensitive to interpersonal dynamics and conflict resolution"
+      ],
+      "reading_record": [
+        "About 3 books in the past 12 months: mostly romance and fantasy romance",
+        "Habit: looks for likable leads and steady emotional progression; skips books with long stretches of stagnant relationship tension"
+      ]
+    },
+    "focus_keywords": ["relationship arc", "emotional warmth", "readability", "banter quality"],
+    "discussion_keywords": ["experience-driven", "moderately conforming", "influenced by consensus", "reacts to standout moments"]
+  },
+  {
+    "uuid": "p6",
+    "username": "MotiveMapMiles",
+    "sex": "Male",
+    "age": 38,
+    "personality": "Methodical and skeptical; likes puzzles; impatient with sloppy plotting",
+    "reading_volume_bucket": "6-10",
+    "genre_preference": ["Mystery and crime", "Thriller"],
+    "experience": {
+      "job_record": [
+        "Compliance specialist: tracks inconsistencies, verifies claims, and documents evidence"
+      ],
+      "reading_record": [
+        "About 7 books in the past 12 months: mystery/crime and thrillers",
+        "Habit: tracks what each character knows and when; checks whether reveals violate earlier constraints"
+      ]
+    },
+    "focus_keywords": ["motive clarity", "information control", "consistency checks", "earned twists", "pacing discipline"],
+    "discussion_keywords": ["evidence-driven", "low conformity", "argumentative", "demands concrete proof"]
+  },
+  {
+    "uuid": "p7",
+    "username": "SpecLogicSam",
+    "sex": "Male",
+    "age": 42,
+    "personality": "Patient and idea-driven; enjoys exploring implications; dislikes hand-wavy explanations",
+    "reading_volume_bucket": "11-20",
+    "genre_preference": ["Science fiction", "Fantasy"],
+    "experience": {
+      "job_record": [
+        "Technical writer: maintains glossaries, standardizes terminology, and clarifies complex concepts"
+      ],
+      "reading_record": [
+        "About 13 books in the past 12 months: mostly science fiction, some fantasy",
+        "Habit: notices terminology drift; follows how rules/constraints shape conflicts and resolutions"
+      ]
+    },
+    "focus_keywords": ["concept clarity", "terminology stability", "world logic", "consistent constraints", "idea execution"],
+    "discussion_keywords": ["calm and rational", "moderately persuadable", "seeks consistency", "if-then reasoning"]
+  },
+  {
+    "uuid": "p8",
+    "username": "QuietCanonQuinn",
+    "sex": "Female",
+    "age": 63,
+    "personality": "Calm, disciplined, and exacting; values craft and depth over hype",
+    "reading_volume_bucket": "20+",
+    "genre_preference": ["Literary fiction", "History"],
+    "experience": {
+      "job_record": [
+        "Retired librarian: collection curation, reader advisory, and long-term exposure to a wide range of fiction"
+      ],
+      "reading_record": [
+        "About 28 books in the past 12 months: literary fiction and history-heavy narratives",
+        "Habit: compares voice consistency across chapters; uses short quotes to justify assessments"
+      ]
+    },
+    "focus_keywords": ["voice consistency", "structure discipline", "theme coherence", "precision", "style restraint"],
+    "discussion_keywords": ["restrained and objective", "low conformity", "hard to sway", "text-quoting"]
+  }
+]
